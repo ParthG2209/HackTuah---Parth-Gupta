@@ -170,15 +170,6 @@ export default function Profile() {
         <FloatingIconsHero icons={iconsData}>
           {/* Center Identity Card */}
           <div className="profile-hero-card">
-            <div className="profile-hero-line" />
-
-            {/* Avatar Circle */}
-            <div className="profile-avatar-ring">
-              <div className="profile-avatar-inner">
-                {userInitials}
-              </div>
-            </div>
-
             {/* Name */}
             <h2 className="profile-name">
               {fullName || "Anonymous Hackathoner"}
