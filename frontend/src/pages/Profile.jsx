@@ -107,8 +107,7 @@ export default function Profile() {
     ? fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
     : 'U';
 
-  const defaultTechs = ["Python", "JavaScript", "TypeScript", "React", "Next.js", "FastAPI", "PostgreSQL", "Supabase", "Docker", "Git", "PyTorch", "Tailwind", "C++"];
-  const displayTechs = selectedTech.length > 0 ? selectedTech : defaultTechs;
+  const displayTechs = selectedTech;
 
   const floatingPositions = [
     { top: '10%', left: '8%' }, { top: '15%', right: '10%' }, { top: '35%', left: '5%' },
