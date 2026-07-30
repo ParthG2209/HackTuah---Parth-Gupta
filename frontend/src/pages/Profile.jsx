@@ -118,11 +118,13 @@ export default function Profile() {
     { top: '25%', left: '20%' }, { top: '25%', right: '20%' }
   ];
 
-  const iconsData = displayTechs.map((tech, i) => ({
+  // Cap the floating icons to the number of available positions to prevent stacking
+  const maxIcons = Math.min(displayTechs.length, floatingPositions.length);
+  const iconsData = displayTechs.slice(0, maxIcons).map((tech, i) => ({
     id: i,
     icon: getTechIconUrl(tech),
     className: '',
-    position: floatingPositions[i % floatingPositions.length]
+    position: floatingPositions[i]
   }));
 
   return (

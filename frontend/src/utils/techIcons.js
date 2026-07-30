@@ -41,7 +41,8 @@ const TECH_ICONS_MAP = {
   "git": "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/git/git-original.svg",
   "aws": "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/amazonwebservices/amazonwebservices-original-wordmark.svg",
   "github actions": "https://cdn.simpleicons.org/githubactions",
-  "vercel": "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/vercel/vercel-original.svg"
+  "vercel": "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/vercel/vercel-original.svg",
+  "tailwind": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/tailwindcss/tailwindcss-original.svg"
 };
 
 export const getTechIconUrl = (tech) => {
