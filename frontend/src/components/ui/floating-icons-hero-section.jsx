@@ -1,10 +1,7 @@
 import * as React from 'react';
 import { motion, useMotionValue, useSpring } from 'framer-motion';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
 
-
-
+// A single icon component with its own motion logic
 const Icon = ({
   mouseX,
   mouseY,
@@ -66,7 +63,7 @@ const Icon = ({
         duration: 0.6,
         ease: [0.22, 1, 0.36, 1],
       }}
-      className={`absolute z-0 ${iconData.className}`}
+      className={`absolute z-0 ${iconData.className || ''}`}
     >
       {/* Inner wrapper for the continuous floating animation */}
       <motion.div
@@ -84,16 +81,16 @@ const Icon = ({
         }}
       >
         {typeof iconData.icon === 'string' ? (
-           <img src={iconData.icon} alt="tech icon" className="floating-icon-img" />
-        ) : (
-           <iconData.icon className="floating-icon-svg" style={{ color: iconData.color || '#fff' }} />
-        )}
+          <img src={iconData.icon} alt="tech icon" className="floating-icon-img" />
+        ) : typeof iconData.icon === 'function' || typeof iconData.icon === 'object' ? (
+          <iconData.icon className="floating-icon-svg" style={{ color: iconData.color || '#fff' }} />
+        ) : null}
       </motion.div>
     </motion.div>
   );
 };
 
-const FloatingIconsHero = React.forwardRef(({ className, icons, children, ...props }, ref) => {
+const FloatingIconsHero = React.forwardRef(({ className, title, subtitle, ctaText, ctaHref, icons, children, ...props }, ref) => {
   // Refs to track the raw mouse position
   const mouseX = React.useRef(0);
   const mouseY = React.useRef(0);
@@ -128,7 +125,57 @@ const FloatingIconsHero = React.forwardRef(({ className, icons, children, ...pro
       {/* Container for the foreground content */}
       <div className="floating-hero-fg">
         <div className="floating-hero-fg-inner">
-          {children}
+          {children ? children : (
+            <div style={{ textAlign: 'center', padding: '0 16px' }}>
+              {title && (
+                <h1 style={{
+                  fontSize: 'clamp(2.5rem, 5vw, 4.5rem)',
+                  fontWeight: 700,
+                  letterSpacing: '-0.025em',
+                  background: 'linear-gradient(to bottom, #ffffff, rgba(255,255,255,0.7))',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                  margin: 0
+                }}>
+                  {title}
+                </h1>
+              )}
+              {subtitle && (
+                <p style={{
+                  marginTop: '24px',
+                  maxWidth: '36rem',
+                  marginLeft: 'auto',
+                  marginRight: 'auto',
+                  fontSize: '1.125rem',
+                  color: '#9ca3af'
+                }}>
+                  {subtitle}
+                </p>
+              )}
+              {ctaText && ctaHref && (
+                <div style={{ marginTop: '40px' }}>
+                  <a
+                    href={ctaHref}
+                    style={{
+                      display: 'inline-block',
+                      padding: '16px 32px',
+                      fontSize: '1rem',
+                      fontWeight: 600,
+                      borderRadius: '12px',
+                      background: 'linear-gradient(135deg, #a855f7, #ec4899)',
+                      color: '#ffffff',
+                      textDecoration: 'none',
+                      boxShadow: '0 10px 25px rgba(168, 85, 247, 0.35)',
+                      transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+                    }}
+                  >
+                    {ctaText}
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </section>
