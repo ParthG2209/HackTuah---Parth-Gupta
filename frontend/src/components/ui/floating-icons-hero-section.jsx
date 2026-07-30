@@ -52,6 +52,8 @@ const Icon = ({
       ref={ref}
       key={iconData.id}
       style={{
+        position: 'absolute',
+        zIndex: 0,
         x: springX,
         y: springY,
         ...(iconData.position || {})
@@ -63,7 +65,7 @@ const Icon = ({
         duration: 0.6,
         ease: [0.22, 1, 0.36, 1],
       }}
-      className={`absolute z-0 ${iconData.className || ''}`}
+      className={iconData.className || ''}
     >
       {/* Inner wrapper for the continuous floating animation */}
       <motion.div
