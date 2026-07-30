@@ -1,0 +1,138 @@
+.walkthrough {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  background-color: #050505;
+  color: #ffffff;
+  padding: 8rem 2rem;
+  overflow: hidden;
+  z-index: 20;
+}
+
+.walkthrough__grid-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-size: 50px 50px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  z-index: 0;
+}
+
+.walkthrough__laser-container {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-50%);
+  z-index: 1;
+}
+
+.walkthrough__laser-line {
+  width: 100%;
+  height: 100%;
+  background: #C679A8;
+  box-shadow: 0 0 20px 5px rgba(198, 121, 168, 0.5);
+  transform-origin: top center;
+}
+
+.walkthrough__content {
+  position: relative;
+  z-index: 2;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.walkthrough__title {
+  text-align: center;
+  font-family: var(--font-geist-sans), sans-serif;
+  font-size: 2rem;
+  letter-spacing: 0.1em;
+  margin-bottom: 6rem;
+  color: #ffffff;
+}
+
+.walkthrough__nodes {
+  display: flex;
+  flex-direction: column;
+  gap: 8rem;
+  padding: 4rem 0;
+}
+
+.walkthrough__node {
+  display: flex;
+  align-items: center;
+  position: relative;
+  width: 50%;
+}
+
+.walkthrough__node:nth-child(odd) {
+  align-self: flex-start;
+  justify-content: flex-end;
+  padding-right: 4rem;
+  text-align: right;
+}
+
+.walkthrough__node:nth-child(even) {
+  align-self: flex-end;
+  justify-content: flex-start;
+  padding-left: 4rem;
+  text-align: left;
+}
+
+.walkthrough__node-point {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: #C679A8;
+  border-radius: 50%;
+  box-shadow: 0 0 20px rgba(198, 121, 168, 0.8);
+}
+
+.walkthrough__node:nth-child(odd) .walkthrough__node-point {
+  right: -8px;
+}
+
+.walkthrough__node:nth-child(even) .walkthrough__node-point {
+  left: -8px;
+}
+
+.walkthrough__node-data {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.walkthrough__label {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.1em;
+}
+
+.walkthrough__value {
+  font-family: var(--font-geist-sans), sans-serif;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+@media (max-width: 768px) {
+  .walkthrough__laser-container {
+    left: 2rem;
+  }
+  .walkthrough__node {
+    width: 100%;
+    padding-left: 4rem !important;
+    padding-right: 0 !important;
+    text-align: left !important;
+  }
+  .walkthrough__node-point {
+    left: -8px !important;
+    right: auto !important;
+  }
+}
