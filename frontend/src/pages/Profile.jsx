@@ -120,11 +120,21 @@ export default function Profile() {
 
   // Cap the floating icons to the number of available positions to prevent stacking
   const maxIcons = Math.min(displayTechs.length, floatingPositions.length);
+  // Calculate dynamic scale based on number of items (fewer items = larger scale)
+  const calculateScale = (count) => {
+    if (count <= 3) return 1.6;
+    if (count <= 6) return 1.3;
+    if (count <= 10) return 1.0;
+    return 0.8;
+  };
+  const dynamicScale = calculateScale(maxIcons);
+
   const iconsData = displayTechs.slice(0, maxIcons).map((tech, i) => ({
-    id: i,
+    id: tech,
     icon: getTechIconUrl(tech),
     className: '',
-    position: floatingPositions[i]
+    position: floatingPositions[i],
+    scale: dynamicScale
   }));
 
   return (
