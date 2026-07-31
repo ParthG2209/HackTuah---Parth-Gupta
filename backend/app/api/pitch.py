@@ -20,6 +20,32 @@ class PitchOutlineUpdateSchema(BaseModel):
 router = APIRouter(prefix="/sessions/{session_id}/pitch", tags=["Pitch"])
 logger = logging.getLogger("kairos.pitch")
 
+
+def build_pitch_sections(pitch_outline: Optional[dict]) -> dict:
+    """Keep the structured pitch content available to the PPT engine.
+
+    The previous implementation collapsed the entire LLM response to one
+    180-character sentence and reused it on every slide.  That guaranteed weak
+    decks even when the generated pitch itself was good.
+    """
+    raw = (pitch_outline or {}).get("full_raw", "") if isinstance(pitch_outline, dict) else ""
+    raw = str(raw or "")
+    sections = {"full_raw": raw}
+    if not raw:
+        return sections
+
+    matches = list(re.finditer(r"^##\s*(Demo Flow|Pitch Outline|Final Pitch Showcase)\s*$", raw, re.I | re.M))
+    key_map = {
+        "demo flow": "demo",
+        "pitch outline": "slides",
+        "final pitch showcase": "showcase",
+    }
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(raw)
+        key = key_map[match.group(1).lower()]
+        sections[key] = raw[match.end():end].strip()
+    return sections
+
 @router.post("")
 async def generate_pitch_outline(
     session_id: uuid.UUID,
@@ -102,11 +128,15 @@ async def list_templates():
 async def analyze_custom_template(
     file: UploadFile = File(...)
 ):
-    if not file.filename.endswith(".pptx"):
+    if not file.filename or not file.filename.lower().endswith(".pptx"):
         raise HTTPException(status_code=400, detail="Only .pptx files are supported.")
     
     contents = await file.read()
-    prs = Presentation(io.BytesIO(contents))
+    try:
+        prs = Presentation(io.BytesIO(contents))
+    except Exception as exc:
+        logger.warning("Invalid uploaded PPTX: %s", exc)
+        raise HTTPException(status_code=400, detail="The uploaded file is not a readable PPTX presentation.") from exc
     analysis = PPTEngine.analyze_presentation(prs)
     return {
         "status": "success",
@@ -139,24 +169,18 @@ async def export_pptx(
         team = team_res.scalars().first()
         if team and team.master_json:
             team_data = team.master_json
+    else:
+        prof_res = await db.execute(select(Profile).where(Profile.id == session.creator_id))
+        profile = prof_res.scalars().first()
+        if profile:
+            team_data = {
+                "name": profile.full_name,
+                "role": profile.primary_role,
+                "level": profile.experience_level,
+                "skills": profile.tech_stack,
+            }
 
-    def clean_pitch_text(text: str) -> str:
-        if not text:
-            return ""
-        # Strip markdown headings, bold, bullet points
-        cleaned = re.sub(r'#+\s*', '', text)
-        cleaned = re.sub(r'\*+|\_+', '', cleaned)
-        cleaned = re.sub(r'\n+', ' ', cleaned).strip()
-        # Return first 180 chars cleanly
-        return cleaned[:180] + "..." if len(cleaned) > 180 else cleaned
-
-    pitch_sections = {}
-    if session.pitch_outline and isinstance(session.pitch_outline, dict):
-        raw = session.pitch_outline.get("full_raw", "")
-        cleaned_summary = clean_pitch_text(raw)
-        pitch_sections["showcase"] = cleaned_summary or "KAIROS provides an end-to-end execution co-founder."
-        pitch_sections["demo"] = cleaned_summary or "Real-time AI workflow engine for execution teams."
-        pitch_sections["architecture"] = "FastAPI async backend, Supabase DB, React 19 UI."
+    pitch_sections = build_pitch_sections(session.pitch_outline)
 
     custom_bytes = await file.read() if file else None
 
@@ -202,17 +226,18 @@ async def preview_slides(
         team = team_res.scalars().first()
         if team and team.master_json:
             team_data = team.master_json
+    else:
+        prof_res = await db.execute(select(Profile).where(Profile.id == session.creator_id))
+        profile = prof_res.scalars().first()
+        if profile:
+            team_data = {
+                "name": profile.full_name,
+                "role": profile.primary_role,
+                "level": profile.experience_level,
+                "skills": profile.tech_stack,
+            }
 
-    pitch_sections = {}
-    if session.pitch_outline and isinstance(session.pitch_outline, dict):
-        raw = session.pitch_outline.get("full_raw", "")
-        cleaned_summary = re.sub(r'#+\s*', '', raw or "")
-        cleaned_summary = re.sub(r'\*+|\_+', '', cleaned_summary)
-        cleaned_summary = re.sub(r'\n+', ' ', cleaned_summary).strip()
-        cleaned_summary = cleaned_summary[:180] + "..." if len(cleaned_summary) > 180 else cleaned_summary
-        pitch_sections["showcase"] = cleaned_summary or "KAIROS provides an end-to-end execution co-founder."
-        pitch_sections["demo"] = cleaned_summary or "Real-time AI workflow engine for execution teams."
-        pitch_sections["architecture"] = "FastAPI async backend, Supabase DB, React 19 UI."
+    pitch_sections = build_pitch_sections(session.pitch_outline)
 
     custom_bytes = await file.read() if file else None
 
@@ -229,12 +254,15 @@ async def preview_slides(
         custom_pptx_bytes=custom_bytes
     )
 
-    # Convert to slide images
+    # Convert the same bytes returned by export-pptx.  When LibreOffice is
+    # available this includes masters, gradients, crops, and installed fonts;
+    # otherwise the engine uses its shape-aware fallback renderer.
     slide_images = PPTEngine.render_slides_as_images(output_bytes, scale=1.0)
 
     return {
         "status": "success",
         "slide_count": len(slide_images),
+        "renderer": "native" if PPTEngine.native_renderer_available() else "fallback",
         "slides": slide_images  # list of base64 PNG strings
     }
 
@@ -378,4 +406,3 @@ async def export_submission_package(
         media_type="text/markdown",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
-
