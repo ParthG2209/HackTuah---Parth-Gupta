@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -24,8 +24,10 @@ export default function PresentationStudio() {
 
   // Slide Preview Images from backend
   const [slideImages, setSlideImages] = useState([]);
+  const [previewRenderer, setPreviewRenderer] = useState('fallback');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [previewError, setPreviewError] = useState(null);
+  const previewRequestRef = useRef(0);
 
   const builtInTemplates = [
     { 
@@ -70,7 +72,7 @@ export default function PresentationStudio() {
     }
   ];
 
-  const fetchSessions = async () => {
+  const fetchSessions = useCallback(async () => {
     if (!profile) return;
     try {
       const res = await axios.get(`${API_BASE}/sessions`, {
@@ -84,9 +86,9 @@ export default function PresentationStudio() {
     } catch (e) {
       console.error("Error loading sessions for presentation studio:", e);
     }
-  };
+  }, [profile, API_BASE, activeSessionId]);
 
-  const fetchSessionDetails = async () => {
+  const fetchSessionDetails = useCallback(async () => {
     if (!activeSessionId) return;
     try {
       const res = await axios.get(`${API_BASE}/sessions/${activeSessionId}`);
@@ -94,11 +96,12 @@ export default function PresentationStudio() {
     } catch (e) {
       console.error("Error loading presentation details:", e);
     }
-  };
+  }, [activeSessionId, API_BASE]);
 
   // Fetch preview slide images from backend
   const fetchPreviewSlides = useCallback(async () => {
     if (!activeSessionId) return;
+    const requestId = ++previewRequestRef.current;
     setIsLoadingPreview(true);
     setPreviewError(null);
     setActiveSlideIndex(0);
@@ -117,36 +120,42 @@ export default function PresentationStudio() {
         { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 }
       );
 
-      if (res.data && res.data.slides) {
+      // A template switch can leave an older request in flight. Only the most
+      // recent response is allowed to replace the active preview.
+      if (requestId === previewRequestRef.current && res.data && res.data.slides) {
         setSlideImages(res.data.slides);
+        setPreviewRenderer(res.data.renderer || 'fallback');
       }
     } catch (err) {
       console.error("Error loading preview slides:", err);
-      setPreviewError("Failed to generate preview. Please try again.");
+      if (requestId === previewRequestRef.current) {
+        setPreviewError(err.response?.data?.detail || "Failed to generate preview. Please try again.");
+        setSlideImages([]);
+      }
     } finally {
-      setIsLoadingPreview(false);
+      if (requestId === previewRequestRef.current) setIsLoadingPreview(false);
     }
   }, [activeSessionId, selectedTemplate, customFile, API_BASE]);
 
   useEffect(() => {
     fetchSessions();
-  }, [profile]);
+  }, [fetchSessions]);
 
   useEffect(() => {
     fetchSessionDetails();
-  }, [activeSessionId]);
+  }, [fetchSessionDetails]);
 
   // Auto-fetch preview when session or template changes
   useEffect(() => {
     if (activeSessionId && selectedTemplate) {
       fetchPreviewSlides();
     }
-  }, [activeSessionId, selectedTemplate]);
+  }, [activeSessionId, selectedTemplate, customFile, fetchPreviewSlides]);
 
   const handleCustomFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (!file.name.endsWith('.pptx')) {
+    if (!file.name.toLowerCase().endsWith('.pptx')) {
       alert('Please upload a valid .pptx presentation file.');
       return;
     }
@@ -228,7 +237,9 @@ export default function PresentationStudio() {
     }
   };
 
-  const activeT = builtInTemplates.find(t => t.id === selectedTemplate) || builtInTemplates[0];
+  const activeT = selectedTemplate === 'custom'
+    ? { accentColor: '#34d399', borderColor: 'rgba(52,211,153,0.4)' }
+    : builtInTemplates.find(t => t.id === selectedTemplate) || builtInTemplates[0];
 
   return (
     <div className="main-content" style={{ display: 'flex', flexDirection: 'column', gap: '12px', flexGrow: 1, overflowY: 'auto', paddingBottom: '60px' }}>
@@ -508,7 +519,9 @@ export default function PresentationStudio() {
           {/* Footer Info */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
             <span style={{ fontSize: '11px', color: '#64748b' }}>
-              ✓ Preview shows the exact PPTX that will be downloaded — same template, same content, same fonts
+              {previewRenderer === 'native'
+                ? '✓ Native render of the exact PPTX that will be downloaded'
+                : '✓ Template content preview; install LibreOffice for native PPTX rendering'}
             </span>
             <span style={{ fontSize: '11px', color: activeT.accentColor, fontWeight: 600 }}>
               {slideImages.length > 0 ? `${slideImages.length} slides rendered` : ''}
