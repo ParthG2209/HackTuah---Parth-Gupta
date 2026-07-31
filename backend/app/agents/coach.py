@@ -47,9 +47,9 @@ class CoachAgent:
         yield f"data: {json.dumps({'type': 'system_info', 'content': '🔍 Creating initial roadmap milestones draft...'})}\n\n"
         
         draft_system_prompt = (
-            "You are KAIROS, a pragmatic hackathon coach.\n"
+            "You are a technical hackathon architect.\n"
             "Generate a raw JSON array of milestones for the hackathon project.\n"
-            "Keep the milestones compact (maximum 4 phases) to fit a tight hackathon timeline.\n"
+            "Keep the milestones compact, but you can create as many phases as needed based on project complexity.\n"
             "Do NOT wrap it in code blocks or headers. Output ONLY a valid JSON array matching this schema:\n"
             "[\n"
             "  {\n"
@@ -104,7 +104,7 @@ class CoachAgent:
         refinement_system_prompt = (
             "You are KAIROS, the master hackathon coach.\n"
             "Using the original roadmap draft and the reflection feedback, produce the final optimized roadmap JSON.\n"
-            "Make sure the workload is realistic, balanced, and fits the hackathon timeframe (max 4 milestones total).\n"
+            "Make sure the workload is realistic, balanced, and fits the hackathon timeframe.\n"
             "Output exactly the marker '[ROADMAP_JSON_START]' on a new line, followed by the JSON array of milestones, and end with the marker '[ROADMAP_JSON_END]' on a new line."
         )
         refinement_prompt = (

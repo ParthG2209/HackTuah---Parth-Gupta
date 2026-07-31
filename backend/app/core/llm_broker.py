@@ -17,7 +17,7 @@ class LLMOrchestrator:
         self.ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
         self.ollama_model = os.getenv("OLLAMA_MODEL", "deepseek-r1:8b")
         
-        self.hf_client = AsyncInferenceClient(token=self.hf_key) if self.hf_key else AsyncInferenceClient()
+        self.hf_client = AsyncInferenceClient(token=self.hf_key, timeout=3.0) if self.hf_key else AsyncInferenceClient(timeout=3.0)
 
     async def generate_text(
         self,
@@ -123,7 +123,7 @@ class LLMOrchestrator:
         # Llama 3.1 8B is perfect for chat; Llama 3.3 70B for reasoning tasks
         model = "llama-3.1-8b-instant" if "chat" in system_prompt.lower() else "llama-3.3-70b-versatile"
         
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=3.0) as client:
             async with client.stream(
                 "POST",
                 "https://api.groq.com/openai/v1/chat/completions",
@@ -165,7 +165,7 @@ class LLMOrchestrator:
         # NVIDIA model is loaded from env, default is z-ai/glm-5.1
         model = self.nvidia_model
         
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=3.0) as client:
             async with client.stream(
                 "POST",
                 "https://integrate.api.nvidia.com/v1/chat/completions",
