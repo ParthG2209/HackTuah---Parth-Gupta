@@ -19,7 +19,7 @@ const PREDEFINED_TECH = {
 export default function Profile() {
   const { profile, refreshProfile, API_BASE, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  
+
   const [isEditMode, setIsEditMode] = useState(searchParams.get('edit') === 'true');
 
   const [fullName, setFullName] = useState('');
@@ -80,7 +80,7 @@ export default function Profile() {
       alert("Name is required.");
       return;
     }
-    
+
     setUpdating(true);
     try {
       await axios.post(`${API_BASE}/profiles`, {
@@ -143,11 +143,10 @@ export default function Profile() {
         <div>
           <h1 className="profile-title">
             <span>{isEditMode ? 'Edit Profile' : 'User Profile'}</span>
-            <Sparkles size={22} style={{ color: '#c084fc' }} />
           </h1>
           <p className="profile-subtitle">
-            {isEditMode 
-              ? 'Update your bio, tech stack, and social connections' 
+            {isEditMode
+              ? 'Update your bio, tech stack, and social connections'
               : 'Overview of your developer identity and integrated tech stack'}
           </p>
         </div>
@@ -236,7 +235,7 @@ export default function Profile() {
         /* EDIT PROFILE FORM PAGE */
         <div className="profile-edit-card">
           <form onSubmit={handleSubmit} className="profile-form">
-            
+
             <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
               <span style={{ fontSize: '12px', fontWeight: '700', color: '#c084fc', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                 /// PERSONAL IDENTITY
@@ -294,9 +293,9 @@ export default function Profile() {
 
             <div className="profile-form-group">
               <label className="profile-form-label">Primary Role</label>
-              <select 
+              <select
                 className="profile-form-select"
-                value={role} 
+                value={role}
                 onChange={(e) => setRole(e.target.value)}
               >
                 <option value="Frontend Developer">Frontend Developer</option>
@@ -311,9 +310,9 @@ export default function Profile() {
 
             <div className="profile-form-group">
               <label className="profile-form-label">Experience Level</label>
-              <select 
+              <select
                 className="profile-form-select"
-                value={experience} 
+                value={experience}
                 onChange={(e) => setExperience(e.target.value)}
               >
                 <option value="Beginner">Beginner (1st/2nd Hackathon)</option>
