@@ -74,20 +74,44 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
   const recognitionRef = useRef(null);
   const chatEndRef = useRef(null);
 
-  // Auto-fetch active session if not explicitly passed
+  // Auto-fetch or auto-create active session if not explicitly passed
   useEffect(() => {
-    if (sessionId) {
-      setActiveSessId(sessionId);
-    } else if (profile?.id) {
-      axios.get(`${API_BASE}/sessions`, { params: { profile_id: profile.id } })
-        .then(res => {
-          if (res.data && res.data.length > 0) {
-            setActiveSessId(res.data[0].id);
+    let isMounted = true;
+    const resolveSession = async () => {
+      if (sessionId) {
+        if (isMounted) setActiveSessId(sessionId);
+        return;
+      }
+      try {
+        let profId = profile?.id;
+        if (!profId) {
+          const savedUser = localStorage.getItem('kairos_user');
+          if (savedUser) {
+            const u = JSON.parse(savedUser);
+            profId = u.profile_id || u.id;
           }
-        })
-        .catch(err => console.error("Widget session fetch error:", err));
-    }
-  }, [sessionId, profile?.id]);
+        }
+        if (profId) {
+          const res = await axios.get(`${API_BASE}/sessions`, { params: { profile_id: profId } });
+          if (res.data && res.data.length > 0) {
+            if (isMounted) setActiveSessId(res.data[0].id);
+          } else {
+            const createRes = await axios.post(`${API_BASE}/sessions`, {
+              name: 'General Coaching Session',
+              creator_id: profId
+            });
+            if (createRes.data && createRes.data.id && isMounted) {
+              setActiveSessId(createRes.data.id);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Widget session resolve error:", err);
+      }
+    };
+    resolveSession();
+    return () => { isMounted = false; };
+  }, [sessionId, profile?.id, API_BASE]);
 
   const lastTranscriptRef = useRef('');
 
@@ -217,7 +241,38 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
       onCommand(query);
     }
 
-    const targetSessionId = activeSessId || sessionId;
+    let targetSessionId = activeSessId || sessionId;
+
+    if (!targetSessionId) {
+      try {
+        let profId = profile?.id;
+        if (!profId) {
+          const savedUser = localStorage.getItem('kairos_user');
+          if (savedUser) {
+            const u = JSON.parse(savedUser);
+            profId = u.profile_id || u.id;
+          }
+        }
+        if (profId) {
+          const res = await axios.get(`${API_BASE}/sessions`, { params: { profile_id: profId } });
+          if (res.data && res.data.length > 0) {
+            targetSessionId = res.data[0].id;
+            setActiveSessId(targetSessionId);
+          } else {
+            const createRes = await axios.post(`${API_BASE}/sessions`, {
+              name: 'General Coaching Session',
+              creator_id: profId
+            });
+            if (createRes.data && createRes.data.id) {
+              targetSessionId = createRes.data.id;
+              setActiveSessId(targetSessionId);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Dynamic session creation in handleSend error:", err);
+      }
+    }
 
     // Direct Voice & Text Task Status Auto-Update Engine
     const lowerQuery = query.toLowerCase();
