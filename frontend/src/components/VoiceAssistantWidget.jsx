@@ -602,7 +602,12 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
               placeholder={isListening ? 'Listening...' : 'Type or speak command...'}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
             />
 
             <button
