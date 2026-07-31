@@ -17,6 +17,12 @@ export default function Pitch() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState('demo'); // 'demo' | 'slides' | 'showcase'
   const [inputText, setInputText] = useState('');
+  const [toast, setToast] = useState(null); // { message: '', type: 'success' | 'error' }
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const fetchMyTeams = async () => {
     if (!profile) return;
@@ -396,6 +402,34 @@ export default function Pitch() {
 
             </div>
           )}
+        </div>
+      )}
+      {toast && (
+        <div style={{
+          position: 'fixed',
+          top: '24px',
+          right: '24px',
+          zIndex: 9999,
+          background: 'rgba(15, 13, 20, 0.9)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '0px',
+          padding: '16px 20px',
+          color: '#fff',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          animation: 'slideIn 0.3s ease-out',
+          maxWidth: '350px'
+        }}>
+          <div style={{
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: toast.type === 'success' ? '#10b981' : '#ef4444'
+          }} />
+          <span style={{ fontSize: '14px', fontWeight: '500' }}>{toast.message}</span>
         </div>
       )}
     </div>
