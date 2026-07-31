@@ -158,3 +158,36 @@ async def test_custom_template_analysis(async_client: AsyncClient):
     assert res_data["status"] == "success"
     assert res_data["filename"] == "custom_test.pptx"
     assert res_data["analysis"]["slide_count"] == 1
+
+@pytest.mark.asyncio
+async def test_custom_template_export_preserves_uploaded_deck(async_client: AsyncClient):
+    profile_id = str(uuid.uuid4())
+    await async_client.post("/api/v1/profiles", json={
+        "id": profile_id,
+        "full_name": "Custom Template Owner",
+        "primary_role": "Product Engineer",
+        "experience_level": "Advanced",
+        "tech_stack": ["Python", "React"]
+    })
+    session_response = await async_client.post("/api/v1/sessions", json={
+        "name": "Uploaded Template Project",
+        "creator_id": profile_id,
+        "problem_statement": "Teams need a clearer execution loop.",
+        "user_idea": "A focused workspace for turning plans into shipped work."
+    })
+    session_id = session_response.json()["id"]
+
+    source = Presentation()
+    slide = source.slides.add_slide(source.slide_layouts[0])
+    slide.shapes.title.text = "CUSTOM TEMPLATE TITLE"
+    buffer = io.BytesIO()
+    source.save(buffer)
+
+    response = await async_client.post(
+        f"/api/v1/sessions/{session_id}/pitch/export-pptx",
+        files={"file": ("custom_test.pptx", buffer.getvalue(), "application/vnd.openxmlformats-officedocument.presentationml.presentation")}
+    )
+    assert response.status_code == 200
+    exported = Presentation(io.BytesIO(response.content))
+    assert len(exported.slides) == 1
+    assert "Uploaded Template Project" in " ".join(shape.text for shape in exported.slides[0].shapes if shape.has_text_frame)
