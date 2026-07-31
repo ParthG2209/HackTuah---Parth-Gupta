@@ -363,14 +363,7 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
           // Dispatch global task update event so all pages (Dashboard, Tasks, Coach) sync real-time
           window.dispatchEvent(new CustomEvent('kairos:task_updated'));
         }
-      } else {
-        setTimeout(() => {
-          setMessages(prev => [...prev, { 
-            role: 'assistant', 
-            content: "**No Active Session Found**: Please create or open a coaching session first so I can analyze your specific project tasks and blockers." 
-          }]);
-        }, 400);
-      }
+
     } catch (err) {
       console.error('Widget voice chat error:', err);
       setMessages(prev => [...prev, { role: 'assistant', content: 'Could not process request. Please check backend connection.' }]);
