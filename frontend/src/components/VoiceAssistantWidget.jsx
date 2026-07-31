@@ -1,103 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Send, X, Volume2, Loader } from 'lucide-react';
+import { Mic, MicOff, Send, X, Volume2, Loader, Bot } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import MarkdownRenderer from './MarkdownRenderer';
 
-// 3D Animated Cybernetic Robot Avatar Component
-function Robot3DAvatar({ size = 48, isListening = false, isSpeaking = false }) {
+// Material Symbol Robot Icon Component
+function Robot3DAvatar({ size = 28, isListening = false, isSpeaking = false }) {
+  const color = isListening ? '#ef4444' : isSpeaking ? '#a855f7' : '#c084fc';
   return (
-    <div style={{
-      width: `${size}px`,
-      height: `${size}px`,
-      position: 'relative',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      perspective: '600px'
-    }}>
-      <svg
-        width={size}
-        height={size}
-        viewBox="0 0 100 100"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        style={{
-          filter: isListening 
-            ? 'drop-shadow(0 0 12px #ef4444)' 
-            : isSpeaking 
-            ? 'drop-shadow(0 0 14px #a855f7)' 
-            : 'drop-shadow(0 0 10px #6366f1)',
-          transition: 'all 0.3s ease'
-        }}
-      >
-        <defs>
-          <linearGradient id="headGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#3b2d54" />
-            <stop offset="50%" stopColor="#1e172e" />
-            <stop offset="100%" stopColor="#0f0b18" />
-          </linearGradient>
-          <linearGradient id="visorGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#0f172a" />
-            <stop offset="100%" stopColor="#020617" />
-          </linearGradient>
-          <linearGradient id="eyeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#00FF66" />
-            <stop offset="100%" stopColor="#00cc52" />
-          </linearGradient>
-          <linearGradient id="purpleEye" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#c084fc" />
-            <stop offset="100%" stopColor="#9333ea" />
-          </linearGradient>
-        </defs>
-
-        {/* Side Antennas / Ears */}
-        <rect x="12" y="38" width="8" height="24" rx="4" fill="#6366f1" opacity="0.8" />
-        <rect x="80" y="38" width="8" height="24" rx="4" fill="#6366f1" opacity="0.8" />
-        <circle cx="16" cy="36" r="3" fill={isListening ? "#ef4444" : "#00FF66"}>
-          <animate attributeName="opacity" values="0.4;1;0.4" dur="1.5s" repeatCount="indefinite" />
-        </circle>
-        <circle cx="84" cy="36" r="3" fill={isListening ? "#ef4444" : "#00FF66"}>
-          <animate attributeName="opacity" values="0.4;1;0.4" dur="1.5s" repeatCount="indefinite" />
-        </circle>
-
-        {/* Main 3D Metallic Head Structure */}
-        <rect x="20" y="16" width="60" height="68" rx="24" fill="url(#headGrad)" stroke="rgba(168, 85, 247, 0.5)" strokeWidth="2.5" />
-
-        {/* Top Forehead Sensor Gem */}
-        <polygon points="50,22 56,28 44,28" fill="#a855f7" />
-
-        {/* 3D Glass Visor Screen */}
-        <rect x="26" y="32" width="48" height="30" rx="12" fill="url(#visorGrad)" stroke="rgba(255, 255, 255, 0.15)" strokeWidth="1.5" />
-
-        {/* Glowing Robotic Eyes */}
-        <g>
-          {/* Left Eye */}
-          <circle cx="40" cy="46" r="6" fill={isSpeaking ? "url(#purpleEye)" : "url(#eyeGrad)"} />
-          <circle cx="40" cy="46" r="2.5" fill="#ffffff" />
-          
-          {/* Right Eye */}
-          <circle cx="60" cy="46" r="6" fill={isSpeaking ? "url(#purpleEye)" : "url(#eyeGrad)"} />
-          <circle cx="60" cy="46" r="2.5" fill="#ffffff" />
-        </g>
-
-        {/* Animated Speaking / Listening Equalizer Mouth */}
-        <g transform="translate(38, 68)">
-          <rect x="0" y="0" width="3" height={isListening || isSpeaking ? "10" : "4"} fill="#00FF66" rx="1.5">
-            <animate attributeName="height" values="3;10;3" dur="0.4s" repeatCount="indefinite" />
-          </rect>
-          <rect x="6" y="0" width="3" height={isListening || isSpeaking ? "14" : "6"} fill="#a855f7" rx="1.5">
-            <animate attributeName="height" values="5;14;5" dur="0.3s" repeatCount="indefinite" />
-          </rect>
-          <rect x="12" y="0" width="3" height={isListening || isSpeaking ? "16" : "8"} fill="#38bdf8" rx="1.5">
-            <animate attributeName="height" values="4;16;4" dur="0.5s" repeatCount="indefinite" />
-          </rect>
-          <rect x="18" y="0" width="3" height={isListening || isSpeaking ? "10" : "4"} fill="#00FF66" rx="1.5">
-            <animate attributeName="height" values="3;10;3" dur="0.35s" repeatCount="indefinite" />
-          </rect>
-        </g>
-      </svg>
-    </div>
+    <span
+      className="material-symbols-outlined"
+      style={{
+        fontSize: `${size}px`,
+        color: color,
+        userSelect: 'none',
+        fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24",
+        lineHeight: 1,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'color 0.2s ease'
+      }}
+    >
+      robot_2
+    </span>
   );
 }
 
@@ -109,15 +35,28 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
   const [transcript, setTranscript] = useState('');
   const [inputText, setInputText] = useState('');
   const [messages, setMessages] = useState(() => {
+    const defaultGreeting = { role: 'assistant', content: 'I am KAIROS Chatbot. Ask me anything, or speak commands like *"Mark setup task as completed"* or *"Summarize blockers"*.' };
     try {
       const saved = localStorage.getItem('kairos_widget_chat_history');
-      return saved ? JSON.parse(saved) : [
-        { role: 'assistant', content: 'Hi! I am KAIROS Chatbot. Ask me anything, or speak commands like *"Mark setup task as completed"* or *"Summarize blockers"*.' }
-      ];
+      if (saved) {
+        let parsed = JSON.parse(saved);
+        parsed = parsed.map(m => {
+          if (m.role === 'assistant' && typeof m.content === 'string') {
+            return {
+              ...m,
+              content: m.content
+                .replace(/👋\s*/g, '')
+                .replace(/^Hi!\s*/gi, '')
+                .replace(/3D Robot Assistant/gi, 'Chatbot')
+            };
+          }
+          return m;
+        });
+        return parsed;
+      }
+      return [defaultGreeting];
     } catch (e) {
-      return [
-        { role: 'assistant', content: 'Hi! I am KAIROS Chatbot. Ask me anything, or speak commands like *"Mark setup task as completed"* or *"Summarize blockers"*.' }
-      ];
+      return [defaultGreeting];
     }
   });
 
@@ -402,38 +341,35 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
   return (
     <div style={{ position: 'fixed', bottom: '28px', right: '28px', zIndex: 99999 }}>
       <style>{`
-        @keyframes float3DRobot {
-          0%, 100% { transform: translateY(0px) rotateX(8deg) rotateY(-5deg); }
-          50% { transform: translateY(-10px) rotateX(-4deg) rotateY(6deg); }
-        }
-        @keyframes cyberGlow {
-          0%, 100% { box-shadow: 0 0 20px rgba(168, 85, 247, 0.4), 0 0 40px rgba(0, 255, 102, 0.2); }
-          50% { box-shadow: 0 0 35px rgba(168, 85, 247, 0.8), 0 0 50px rgba(0, 255, 102, 0.5); }
+        @keyframes subtleFloat {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-4px); }
         }
       `}</style>
       
-      {/* Floating Toggle Button with Pure React 3D Animated Cybernetic Robot */}
+      {/* Floating Toggle Button with Minimal Clean Avatar */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
           style={{
-            width: '68px',
-            height: '68px',
-            borderRadius: '34px',
-            background: 'radial-gradient(circle at 30% 30%, #2b1f48 0%, #0e0919 100%)',
-            border: '2px solid rgba(168, 85, 247, 0.6)',
+            width: '60px',
+            height: '60px',
+            borderRadius: '30px',
+            background: '#18181b',
+            border: '1px solid rgba(168, 85, 247, 0.4)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
             padding: 0,
-            animation: 'float3DRobot 3s ease-in-out infinite, cyberGlow 2.5s ease-in-out infinite',
-            transition: 'transform 0.2s ease'
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+            animation: 'subtleFloat 4s ease-in-out infinite',
+            transition: 'transform 0.2s ease, border-color 0.2s ease'
           }}
           className="voice-widget-btn"
-          title="Open Kairos 3D Robot Assistant"
+          title="Open Kairos Assistant"
         >
-          <Robot3DAvatar size={52} isListening={isListening} isSpeaking={isLoading} />
+          <Robot3DAvatar size={32} isListening={isListening} isSpeaking={isLoading} />
         </button>
       )}
 
@@ -444,9 +380,9 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
           height: '520px',
           background: 'rgba(15, 13, 24, 0.97)',
           backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(168, 85, 247, 0.4)',
-          borderRadius: '0px',
-          boxShadow: '0 24px 48px rgba(0, 0, 0, 0.8), 0 0 20px rgba(168, 85, 247, 0.25)',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          borderRadius: '12px',
+          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -462,7 +398,7 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
             justifyContent: 'space-between'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Robot3DAvatar size={36} isListening={isListening} isSpeaking={isLoading} />
+              <Robot3DAvatar size={24} isListening={isListening} isSpeaking={isLoading} />
               <div>
                 <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#fff', letterSpacing: '0.05em' }}>KAIROS Chatbot</h4>
                 <span style={{ fontSize: '10px', color: '#00FF66', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -502,7 +438,7 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
                   color: '#fff'
                 }}
               >
-                <MarkdownRenderer content={m.content} />
+                <MarkdownRenderer content={(m.content || '').replace(/👋\s*/g, '').replace(/^Hi!\s*/gi, '')} />
               </div>
             ))}
 
@@ -610,8 +546,7 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
-                flexShrink: 0,
-                boxShadow: isListening ? '0 0 12px rgba(239, 68, 68, 0.5)' : 'none'
+                flexShrink: 0
               }}
               title={isListening ? 'Stop listening' : 'Start voice command'}
             >
