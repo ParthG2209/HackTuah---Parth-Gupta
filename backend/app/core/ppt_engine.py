@@ -22,7 +22,17 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 logger = logging.getLogger("kairos.ppt_engine")
 
-TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "ppt_templates")
+# Resolve templates directory relative to this file's location.
+# Works on local dev, Docker (/home/user/app), and Render (/opt/render/project/src).
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATES_DIR = os.path.join(os.path.dirname(_THIS_DIR), "static", "ppt_templates")
+
+# Log template status at import time so deployment issues are immediately visible.
+if os.path.isdir(TEMPLATES_DIR):
+    _found = [f for f in os.listdir(TEMPLATES_DIR) if f.endswith(".pptx")]
+    logger.info("PPT templates dir: %s  (%d templates found: %s)", TEMPLATES_DIR, len(_found), _found)
+else:
+    logger.warning("PPT templates dir NOT FOUND at %s — presentation exports will fail!", TEMPLATES_DIR)
 
 PREDEFINED_TEMPLATES = {
     "template-1": {
@@ -671,6 +681,17 @@ class PPTEngine:
             if not os.path.exists(t_path):
                 # Fallback to Template-1 if path missing
                 t_path = os.path.join(TEMPLATES_DIR, "Template-1.pptx")
+            if not os.path.exists(t_path):
+                logger.error(
+                    "No PPT template found! Tried %s and fallback %s. "
+                    "TEMPLATES_DIR=%s exists=%s",
+                    template_source, t_path, TEMPLATES_DIR, os.path.isdir(TEMPLATES_DIR)
+                )
+                raise FileNotFoundError(
+                    f"PPT template files are missing on the server. "
+                    f"Expected at: {TEMPLATES_DIR}. "
+                    f"Please redeploy with the template files included."
+                )
             prs = Presentation(t_path)
 
         team_info = team_data or {}

@@ -12,7 +12,12 @@ export const AuthProvider = ({ children }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/v1';
+  // Auto-detect API base: use env var if set, otherwise auto-switch between
+  // local dev server and the deployed Render backend based on hostname.
+  const API_BASE = import.meta.env.VITE_API_BASE
+    || (window.location.hostname === 'localhost'
+        ? 'http://localhost:8000/api/v1'
+        : 'https://hacktuah-parth-gupta.onrender.com/api/v1');
 
   useEffect(() => {
     // If Supabase is not configured, skip auth setup and just mark loading done
