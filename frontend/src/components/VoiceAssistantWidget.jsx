@@ -95,14 +95,6 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
           const res = await axios.get(`${API_BASE}/sessions`, { params: { profile_id: profId } });
           if (res.data && res.data.length > 0) {
             if (isMounted) setActiveSessId(res.data[0].id);
-          } else {
-            const createRes = await axios.post(`${API_BASE}/sessions`, {
-              name: 'General Coaching Session',
-              creator_id: profId
-            });
-            if (createRes.data && createRes.data.id && isMounted) {
-              setActiveSessId(createRes.data.id);
-            }
           }
         }
       } catch (err) {
@@ -259,14 +251,9 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
             targetSessionId = res.data[0].id;
             setActiveSessId(targetSessionId);
           } else {
-            const createRes = await axios.post(`${API_BASE}/sessions`, {
-              name: 'General Coaching Session',
-              creator_id: profId
-            });
-            if (createRes.data && createRes.data.id) {
-              targetSessionId = createRes.data.id;
-              setActiveSessId(targetSessionId);
-            }
+            setMessages(prev => [...prev, { role: 'assistant', text: "Please create a project from the dashboard first to start chatting!" }]);
+            setIsLoading(false);
+            return;
           }
         }
       } catch (err) {
