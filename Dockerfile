@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     curl \
+    libreoffice-impress \
+    poppler-utils \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory for dependencies
