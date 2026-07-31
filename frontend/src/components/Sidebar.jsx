@@ -1,19 +1,14 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { 
-  LayoutDashboard, Users, MessageSquare, CheckSquare, 
-  Presentation, Layout, User, LogOut, Menu, X, Edit3
+import {
+  LayoutDashboard, Users, MessageSquare, CheckSquare,
+  Presentation, Layout, User, LogOut, Menu, X
 } from 'lucide-react';
 
 export default function Sidebar() {
   const { logout, profile } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
-
-  const userInitials = profile?.full_name 
-    ? profile.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() 
-    : 'U';
 
   const closeMenu = () => setIsOpen(false);
 
@@ -27,8 +22,8 @@ export default function Sidebar() {
           </div>
           <span style={{ fontWeight: '800', fontSize: '18px', color: '#fff', fontFamily: 'var(--font-display)', letterSpacing: '0.05em' }}>KAIROS</span>
         </div>
-        <button 
-          onClick={() => setIsOpen(!isOpen)} 
+        <button
+          onClick={() => setIsOpen(!isOpen)}
           style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
         >
           {isOpen ? <X size={24} /> : <Menu size={24} />}
@@ -67,23 +62,23 @@ export default function Sidebar() {
               <User size={18} />
               <span>My Profile</span>
             </NavLink>
-            
+
             <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '12px 0' }} />
-            
+
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div className="sidebar-user-avatar" style={{ border: 'none' }}>{userInitials}</div>
                 <span style={{ fontSize: '14px', color: '#fff', fontWeight: '500' }}>{profile?.full_name || 'User'}</span>
               </div>
-              {profile && (
-                <button 
-                  onClick={() => { closeMenu(); logout(); }} 
+              {
+                <button
+                  onClick={() => { closeMenu(); logout(); }}
                   style={{ background: 'transparent', border: 'none', color: '#f87171', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}
                 >
                   <LogOut size={16} />
                   <span>Sign Out</span>
                 </button>
-              )}
+              }
             </div>
           </div>
         </div>
@@ -145,95 +140,10 @@ export default function Sidebar() {
 
         {/* Footer Actions */}
         <div className="sidebar-footer-kairos">
-          {/* User Profile Avatar with Hover/Click Dropdown */}
-          <div 
-            style={{ position: 'relative' }}
-            onMouseEnter={() => setShowDropdown(true)}
-            onMouseLeave={() => setShowDropdown(false)}
-          >
-            <div 
-              className="sidebar-user-avatar" 
-              style={{ cursor: 'pointer' }}
-              title={profile?.full_name || "Profile"}
-            >
-              {userInitials}
-            </div>
-
-            {/* Clean Popup Menu */}
-            {showDropdown && (
-              <div style={{
-                position: 'absolute',
-                bottom: '0',
-                left: '60px',
-                width: '180px',
-                backgroundColor: '#121019',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                borderRadius: '16px',
-                padding: '8px',
-                boxShadow: '0 20px 40px rgba(0,0,0,0.8)',
-                zIndex: 9999,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '4px'
-              }}>
-                <div style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '4px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {profile?.full_name || 'User'}
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {profile?.primary_role || 'Developer'}
-                  </div>
-                </div>
-
-                <NavLink 
-                  to="/profile" 
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    padding: '8px 12px',
-                    borderRadius: '10px',
-                    color: '#e4e4e7',
-                    textDecoration: 'none',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    transition: 'background 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                  <User size={15} style={{ color: '#c084fc' }} />
-                  <span>Profile</span>
-                </NavLink>
-
-                <NavLink 
-                  to="/profile?edit=true" 
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    padding: '8px 12px',
-                    borderRadius: '10px',
-                    color: '#e4e4e7',
-                    textDecoration: 'none',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    transition: 'background 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                  <Edit3 size={15} style={{ color: '#f472b6' }} />
-                  <span>Edit Profile</span>
-                </NavLink>
-              </div>
-            )}
-          </div>
-
           {/* Sign Out */}
           {profile && (
-            <button 
-              onClick={logout} 
+            <button
+              onClick={logout}
               className="sidebar-link-kairos logout-btn"
               title="Sign Out"
               style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
