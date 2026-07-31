@@ -250,16 +250,16 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
           if (res.data && res.data.length > 0) {
             targetSessionId = res.data[0].id;
             setActiveSessId(targetSessionId);
-          } else {
-            setMessages(prev => [...prev, { role: 'assistant', text: "Please create a project from the dashboard first to start chatting!" }]);
-            setIsLoading(false);
-            return;
           }
         }
       } catch (err) {
         console.error("Dynamic session creation in handleSend error:", err);
       }
     }
+
+    const chatEndpoint = targetSessionId 
+      ? `${API_BASE}/sessions/${targetSessionId}/chat` 
+      : `${API_BASE}/sessions/general-chat`;
 
     // Direct Voice & Text Task Status Auto-Update Engine
     const lowerQuery = query.toLowerCase();
@@ -315,21 +315,20 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
     }
 
     try {
-      if (targetSessionId) {
-        const history = messages.map(m => ({ role: m.role, content: m.content }));
-        history.push(userMsg);
+      const history = messages.map(m => ({ role: m.role, content: m.content }));
+      history.push(userMsg);
 
-        const response = await fetch(`${API_BASE}/sessions/${targetSessionId}/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: query,
-            history: history,
-            model_preference: 'deepseek'
-          })
-        });
+      const response = await fetch(chatEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: query,
+          history: history,
+          model_preference: 'deepseek'
+        })
+      });
 
-        if (response.body) {
+      if (response.body) {
           const reader = response.body.getReader();
           const decoder = new TextDecoder('utf-8');
           let buffer = '';

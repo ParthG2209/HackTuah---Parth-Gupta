@@ -477,3 +477,25 @@ async def delete_session(session_id: uuid.UUID, db: AsyncSession = Depends(get_d
     await db.delete(session)
     await db.commit()
     return {"status": "success", "message": "Session deleted successfully"}
+
+@router.post("/general-chat")
+async def chat_general(data: ChatMessageSchema):
+    from backend.app.core.llm_broker import LLMBroker
+    broker = LLMBroker()
+    from fastapi.responses import StreamingResponse
+    import json
+    
+    system_prompt = (
+        "You are KAIROS, an AI assistant. The user is chatting with you casually, "
+        "and currently has no active hackathon project session selected. "
+        "Answer their questions directly and conversationally."
+    )
+    
+    async def sse_generator():
+        try:
+            async for chunk in broker.stream_orchestrated(system_prompt, data.message, task_preference="chat", max_tokens=1000):
+                yield chunk
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            
+    return StreamingResponse(sse_generator(), media_type="text/event-stream")
