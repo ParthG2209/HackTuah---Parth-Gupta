@@ -611,6 +611,7 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
             />
 
             <button
+              type="button"
               onClick={() => handleSend()}
               disabled={!inputText.trim() || isLoading}
               style={{
