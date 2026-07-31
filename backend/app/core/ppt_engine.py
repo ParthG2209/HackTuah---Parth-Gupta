@@ -2,12 +2,17 @@ import os
 import io
 import re
 import logging
+import base64
+import shutil
+import subprocess
+import tempfile
+import textwrap
 from typing import Dict, Any, List, Optional
 import pptx
 from pptx import Presentation
-from pptx.util import Inches, Pt, Emu
-from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
+from pptx.util import Inches, Pt
+from pptx.enum.text import PP_ALIGN, MSO_ANCHOR, MSO_AUTO_SIZE
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib import colors
@@ -15,24 +20,9 @@ from reportlab.pdfgen import canvas
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether, HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
-import urllib.request
-
 logger = logging.getLogger("kairos.ppt_engine")
 
 TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "ppt_templates")
-
-# Free high-res topic images mapped to presentation themes
-TOPIC_IMAGE_URLS = {
-    "ai": "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=800&auto=format&fit=crop",
-    "problem": "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=800&auto=format&fit=crop",
-    "solution": "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=800&auto=format&fit=crop",
-    "architecture": "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=800&auto=format&fit=crop",
-    "roadmap": "https://images.unsplash.com/photo-1507925921958-8a62f3d1a50d?w=800&auto=format&fit=crop",
-    "metrics": "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&auto=format&fit=crop",
-    "team": "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&auto=format&fit=crop",
-    "showcase": "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&auto=format&fit=crop",
-    "tech": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&auto=format&fit=crop"
-}
 
 PREDEFINED_TEMPLATES = {
     "template-1": {
@@ -123,18 +113,6 @@ class NumberedCanvas(canvas.Canvas):
 class PPTEngine:
 
     @staticmethod
-    def _fetch_topic_image_bytes(topic: str) -> Optional[bytes]:
-        """Fetch subject-relevant image bytes from free CDN matching topic key."""
-        url = TOPIC_IMAGE_URLS.get(topic.lower(), TOPIC_IMAGE_URLS["tech"])
-        try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-            with urllib.request.urlopen(req, timeout=4) as response:
-                return response.read()
-        except Exception as e:
-            logger.warning(f"Failed to fetch topic image for '{topic}': {e}")
-            return None
-
-    @staticmethod
     def get_template_path(template_id: str) -> str:
         t_info = PREDEFINED_TEMPLATES.get(template_id, PREDEFINED_TEMPLATES["template-1"])
         return os.path.join(TEMPLATES_DIR, t_info["file"])
@@ -178,120 +156,234 @@ class PPTEngine:
     @staticmethod
     def fit_text_to_frame(text_frame, text: str, max_font_size: int = 16, min_font_size: int = 9, is_title: bool = False):
         """
-        ZERO-OVERRIDE Text Replacement:
-        Replaces text content ONLY. Never touches:
-        - Font Size (keeps original 124.8pt, 25pt, 20pt, 15pt etc. from template)
-        - Font Name (keeps Poppins Bold, Aileron, Aileron Bold, etc.)
-        - Font Bold / Italic state
-        - Font Color RGB
-        - Paragraph Alignment (LEFT, CENTER, RIGHT, JUSTIFY)
-        - Paragraph Spacing (space_before, space_after, line_spacing)
-        - Frame Margins & Vertical Anchor
+        Replace a template's copy without changing its geometry or visual style.
+
+        Template text boxes are deliberately small.  Keeping their original font
+        size for arbitrary LLM output is what caused the old exporter to produce
+        overflowing and clipped slides, so this method measures an approximate
+        line budget and reduces the inherited size only when it is necessary.
         """
         text_frame.word_wrap = True
-        cleaned = text.strip()
+        cleaned = re.sub(r"[ \t]+", " ", str(text or "")).strip()
         if not cleaned:
+            text_frame.clear()
             return
-
-        # Truncate if text is way too long for slide boxes
-        if len(cleaned) > 500:
-            cleaned = cleaned[:500] + "..."
-
-        lines = [line.strip() for line in cleaned.split("\n") if line.strip()]
-        if not lines:
-            lines = [cleaned]
 
         existing_paras = list(text_frame.paragraphs)
         if len(existing_paras) == 0:
             return
 
-        # Snapshot reference font properties from first run of first paragraph
-        ref_size = None
-        ref_color = None
-        ref_name = None
-        ref_bold = None
-        ref_italic = None
-        ref_alignment = existing_paras[0].alignment
-        ref_space_before = existing_paras[0].space_before
-        ref_space_after = existing_paras[0].space_after
-        ref_line_spacing = existing_paras[0].line_spacing
+        reference_para = existing_paras[0]
+        reference_run = reference_para.runs[0] if reference_para.runs else None
+        original_pt = (
+            reference_run.font.size.pt
+            if reference_run and reference_run.font.size
+            else float(max_font_size)
+        )
+        min_pt = max(float(min_font_size), 7.0)
 
-        if len(existing_paras[0].runs) > 0:
-            r0 = existing_paras[0].runs[0]
-            ref_size = r0.font.size  # KEEP EXACT ORIGINAL SIZE (e.g. 124.8pt, 15pt)
-            if r0.font.color and r0.font.color.type == 1:
-                ref_color = r0.font.color.rgb
-            ref_name = r0.font.name
-            if r0.font.bold is not None:
-                ref_bold = r0.font.bold
-            if r0.font.italic is not None:
-                ref_italic = r0.font.italic
+        # A conservative approximation is preferable to PowerPoint clipping
+        # text after export.  PowerPoint's actual font metrics vary by machine,
+        # so leave a little breathing room in both dimensions.
+        width_pt = 360.0
+        shape = getattr(text_frame, "_parent", None)
+        if shape is not None:
+            margin_x = (float(text_frame.margin_left) + float(text_frame.margin_right)) / 12700
+            margin_y = (float(text_frame.margin_top) + float(text_frame.margin_bottom)) / 12700
+            width_pt = max(24.0, shape.width / 12700 - margin_x)
+            height_pt = max(12.0, shape.height / 12700 - margin_y)
+        else:
+            width_pt, height_pt = 360.0, 120.0
 
-        # Replace text in existing paragraphs run-by-run
-        for i, line in enumerate(lines):
-            line_txt = line[2:].strip() if line.startswith(("- ", "* ", "• ")) else line
+        raw_lines = [line.strip() for line in cleaned.splitlines() if line.strip()] or [cleaned]
+        bullet_lines = []
+        for line in raw_lines:
+            is_bullet = line.startswith(("- ", "* ", "• "))
+            value = line[2:].strip() if is_bullet else line
+            bullet_lines.append(("• " if is_bullet else "") + value)
 
-            if i < len(existing_paras):
-                p = existing_paras[i]
-                # Replace text in first run, blank extra runs
-                if len(p.runs) > 0:
-                    p.runs[0].text = line_txt
-                    for extra_r in p.runs[1:]:
-                        extra_r.text = ""
-                else:
-                    # No runs exist, add one with reference font props
-                    r = p.add_run()
-                    r.text = line_txt
-                    if ref_size:
-                        r.font.size = ref_size
-                    if ref_color:
-                        r.font.color.rgb = ref_color
-                    if ref_name:
-                        r.font.name = ref_name
-                    if ref_bold is not None:
-                        r.font.bold = ref_bold
-                    if ref_italic is not None:
-                        r.font.italic = ref_italic
-            else:
-                # Need a new paragraph beyond what template has
-                p = text_frame.add_paragraph()
-                if ref_alignment is not None:
-                    p.alignment = ref_alignment
-                if ref_space_before is not None:
-                    p.space_before = ref_space_before
-                if ref_space_after is not None:
-                    p.space_after = ref_space_after
-                if ref_line_spacing is not None:
-                    p.line_spacing = ref_line_spacing
-                r = p.add_run()
-                r.text = line_txt
-                if ref_size:
-                    r.font.size = ref_size
-                if ref_color:
-                    r.font.color.rgb = ref_color
-                if ref_name:
-                    r.font.name = ref_name
-                if ref_bold is not None:
-                    r.font.bold = ref_bold
-                if ref_italic is not None:
-                    r.font.italic = ref_italic
+        def wrap_for_size(font_pt: float):
+            chars_per_line = max(8, int((width_pt / max(font_pt, 1)) * 1.95))
+            wrapped = []
+            for line in bullet_lines:
+                prefix = "• " if line.startswith("• ") else ""
+                value = line[len(prefix):]
+                pieces = textwrap.wrap(
+                    value,
+                    width=max(8, chars_per_line - len(prefix)),
+                    break_long_words=True,
+                    break_on_hyphens=False,
+                ) or [""]
+                wrapped.extend([prefix + pieces[0]] + pieces[1:])
+            max_lines = max(1, int(height_pt / max(font_pt * 1.2, 1)))
+            return wrapped, max_lines
 
-        # Blank out unused extra paragraphs
-        for extra_i in range(len(lines), len(existing_paras)):
-            p_extra = existing_paras[extra_i]
-            for r_extra in p_extra.runs:
-                r_extra.text = ""
+        chosen_pt = original_pt
+        wrapped, max_lines = wrap_for_size(chosen_pt)
+        while len(wrapped) > max_lines and chosen_pt > min_pt:
+            chosen_pt = max(min_pt, chosen_pt - 1)
+            wrapped, max_lines = wrap_for_size(chosen_pt)
+
+        if len(wrapped) > max_lines:
+            wrapped = wrapped[:max_lines]
+            last = wrapped[-1].rstrip()
+            wrapped[-1] = (last[: max(1, len(last) - 3)].rstrip() + "...")
+
+        style = {
+            "size": Pt(chosen_pt),
+            "name": reference_run.font.name if reference_run else None,
+            "bold": reference_run.font.bold if reference_run else None,
+            "italic": reference_run.font.italic if reference_run else None,
+            "color": None,
+        }
+        if reference_run:
+            try:
+                if reference_run.font.color.type == 1:
+                    style["color"] = reference_run.font.color.rgb
+            except Exception:
+                pass
+
+        alignment = reference_para.alignment
+        space_before = reference_para.space_before
+        space_after = reference_para.space_after
+        line_spacing = reference_para.line_spacing
+        level = reference_para.level
+
+        text_frame.clear()
+        for index, line in enumerate(wrapped):
+            paragraph = text_frame.paragraphs[0] if index == 0 else text_frame.add_paragraph()
+            paragraph.alignment = alignment
+            paragraph.level = level
+            paragraph.space_before = space_before
+            paragraph.space_after = space_after
+            paragraph.line_spacing = line_spacing
+            run = paragraph.add_run()
+            run.text = line
+            run.font.size = style["size"]
+            if style["name"]:
+                run.font.name = style["name"]
+            if style["bold"] is not None:
+                run.font.bold = style["bold"]
+            if style["italic"] is not None:
+                run.font.italic = style["italic"]
+            if style["color"] is not None:
+                run.font.color.rgb = style["color"]
+
+        text_frame.word_wrap = True
+        text_frame.auto_size = MSO_AUTO_SIZE.NONE
+
+    @staticmethod
+    def _rgb_from_color(color, default=(255, 255, 255)):
+        try:
+            if color and color.type == 1 and color.rgb:
+                value = str(color.rgb)
+                return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+        except Exception:
+            pass
+        return default
+
+    @staticmethod
+    def _shape_fill_color(shape):
+        try:
+            if shape.fill.type is not None:
+                return PPTEngine._rgb_from_color(shape.fill.fore_color, None)
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _shape_line_color(shape):
+        try:
+            if shape.line.fill.type is not None:
+                return PPTEngine._rgb_from_color(shape.line.color, None)
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _load_preview_font(ImageFont, bold=False, size=16):
+        candidates = []
+        if bold:
+            candidates.extend([
+                "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            ])
+        else:
+            candidates.extend([
+                "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            ])
+        candidates.append("/System/Library/Fonts/Helvetica.ttc")
+        for path in candidates:
+            try:
+                return ImageFont.truetype(path, max(1, size))
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
+    @staticmethod
+    def _render_with_libreoffice(pptx_bytes: bytes, scale: float):
+        """Render using PowerPoint-compatible LibreOffice when installed."""
+        if not PPTEngine.native_renderer_available():
+            return None
+        libreoffice = shutil.which("libreoffice") or shutil.which("soffice")
+        pdftoppm = shutil.which("pdftoppm")
+
+        with tempfile.TemporaryDirectory(prefix="kairos-ppt-") as tmp:
+            source = os.path.join(tmp, "presentation.pptx")
+            with open(source, "wb") as handle:
+                handle.write(pptx_bytes)
+            converted = subprocess.run(
+                [libreoffice, "--headless", "--convert-to", "pdf", "--outdir", tmp, source],
+                capture_output=True,
+                timeout=60,
+                check=False,
+            )
+            pdf_path = os.path.join(tmp, "presentation.pdf")
+            if converted.returncode != 0 or not os.path.exists(pdf_path):
+                logger.warning("LibreOffice could not render PPTX: %s", converted.stderr[-500:].decode(errors="ignore"))
+                return None
+
+            prefix = os.path.join(tmp, "slide")
+            rasterized = subprocess.run(
+                [pdftoppm, "-png", "-r", str(max(72, int(96 * scale))), pdf_path, prefix],
+                capture_output=True,
+                timeout=60,
+                check=False,
+            )
+            if rasterized.returncode != 0:
+                return None
+            paths = sorted(
+                (os.path.join(tmp, name) for name in os.listdir(tmp) if name.startswith("slide-") and name.endswith(".png")),
+                key=lambda path: int(re.search(r"-(\d+)\.png$", path).group(1)),
+            )
+            if not paths:
+                return None
+            encoded = []
+            for path in paths:
+                with open(path, "rb") as handle:
+                    encoded.append(base64.b64encode(handle.read()).decode("ascii"))
+            return encoded
+
+    @staticmethod
+    def native_renderer_available() -> bool:
+        return bool((shutil.which("libreoffice") or shutil.which("soffice")) and shutil.which("pdftoppm"))
 
     @staticmethod
     def render_slides_as_images(pptx_bytes: bytes, scale: float = 1.5) -> list:
         """
-        Convert each slide in a PPTX to a PNG image using Pillow.
-        Extracts text shapes with their exact positions, sizes, font properties
-        and renders them onto a canvas matching slide dimensions.
-        Returns list of base64-encoded PNG strings.
+        Render the generated deck for the live preview.
+
+        Native LibreOffice rendering is used in production containers so master
+        graphics, gradients, cropping, and fonts match the downloaded deck.  A
+        Pillow renderer remains as a deterministic local fallback for machines
+        without LibreOffice.
         """
-        import base64
-        from PIL import Image, ImageDraw, ImageFont
+        native = PPTEngine._render_with_libreoffice(pptx_bytes, scale)
+        if native:
+            return native
+
+        from PIL import Image, ImageDraw, ImageFont, ImageOps
 
         prs = Presentation(io.BytesIO(pptx_bytes))
         slide_w_px = int(prs.slide_width.inches * 96 * scale)
@@ -301,8 +393,7 @@ class PPTEngine:
         slide_images = []
 
         for slide in prs.slides:
-            # Create white slide canvas
-            img = Image.new('RGB', (slide_w_px, slide_h_px), (255, 255, 255))
+            img = Image.new("RGB", (slide_w_px, slide_h_px), (255, 255, 255))
             draw = ImageDraw.Draw(img)
 
             # Check slide background fill color
@@ -311,31 +402,52 @@ class PPTEngine:
                 try:
                     fc = bg.fill.fore_color
                     if fc and fc.type == 1:
-                        rgb = fc.rgb
-                        bg_color = (rgb[0] if isinstance(rgb[0], int) else int(str(rgb)[:2], 16),
-                                    rgb[1] if isinstance(rgb[1], int) else int(str(rgb)[2:4], 16),
-                                    rgb[2] if isinstance(rgb[2], int) else int(str(rgb)[4:6], 16))
-                        draw.rectangle([(0, 0), (slide_w_px, slide_h_px)], fill=bg_color)
+                        draw.rectangle([(0, 0), (slide_w_px, slide_h_px)], fill=PPTEngine._rgb_from_color(fc, (255, 255, 255)))
                 except Exception:
                     pass
 
-            # Render shape elements (pictures & text)
-            for shape in slide.shapes:
-                # Render Picture Shapes onto preview canvas
-                if shape.shape_type == pptx.enum.shapes.MSO_SHAPE_TYPE.PICTURE:
+            # Draw in z-order.  The old preview rendered only text and pictures,
+            # which made every template's cards, bands, and panels disappear.
+            def iter_shapes(container, offset_x=0, offset_y=0):
+                for child in container.shapes:
+                    yield child, offset_x, offset_y
+                    if child.shape_type == MSO_SHAPE_TYPE.GROUP:
+                        yield from iter_shapes(
+                            child,
+                            offset_x + emu_to_px(child.left),
+                            offset_y + emu_to_px(child.top),
+                        )
+
+            for shape, offset_x, offset_y in iter_shapes(slide):
+                x = offset_x + emu_to_px(shape.left)
+                y = offset_y + emu_to_px(shape.top)
+                w = max(1, emu_to_px(shape.width))
+                h = max(1, emu_to_px(shape.height))
+
+                if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+                    continue
+
+                if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                     try:
-                        x = emu_to_px(shape.left)
-                        y = emu_to_px(shape.top)
-                        w = emu_to_px(shape.width)
-                        h = emu_to_px(shape.height)
-                        if w > 0 and h > 0:
-                            pic_bytes = shape.image.blob
-                            pic_img = Image.open(io.BytesIO(pic_bytes)).convert("RGBA")
-                            pic_img = pic_img.resize((w, h), Image.Resampling.LANCZOS)
-                            img.paste(pic_img, (x, y), pic_img)
+                        pic_img = Image.open(io.BytesIO(shape.image.blob)).convert("RGB")
+                        pic_img = ImageOps.fit(pic_img, (w, h), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
+                        img.paste(pic_img, (x, y))
                     except Exception as e:
                         logger.warning(f"Failed to render slide picture shape in preview: {e}")
                     continue
+
+                fill = PPTEngine._shape_fill_color(shape)
+                if fill:
+                    try:
+                        if shape.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE and getattr(shape.auto_shape_type, "name", "") in {"OVAL", "ELLIPSE"}:
+                            draw.ellipse((x, y, x + w, y + h), fill=fill)
+                        else:
+                            draw.rectangle((x, y, x + w, y + h), fill=fill)
+                    except Exception:
+                        draw.rectangle((x, y, x + w, y + h), fill=fill)
+                line_color = PPTEngine._shape_line_color(shape)
+                if line_color:
+                    draw.rectangle((x, y, x + w, y + h), outline=line_color, width=max(1, int(scale)))
 
                 if not shape.has_text_frame:
                     continue
@@ -344,12 +456,11 @@ class PPTEngine:
                 if not txt:
                     continue
 
-                x = emu_to_px(shape.left)
-                y = emu_to_px(shape.top)
-                w = emu_to_px(shape.width)
-                h = emu_to_px(shape.height)
-
                 # Gather all lines with their font properties
+                text_margin_x = max(2, emu_to_px(tf.margin_left))
+                text_margin_y = max(2, emu_to_px(tf.margin_top))
+                text_y = y + text_margin_y
+                rendered_lines = []
                 for para in tf.paragraphs:
                     line_text = ""
                     font_size_px = 16
@@ -364,7 +475,6 @@ class PPTEngine:
                         # Get font size
                         if run.font.size:
                             raw_pt = run.font.size / 12700
-                            # Cap display size for rendering (huge title fonts)
                             capped_pt = min(raw_pt, 72)
                             font_size_px = int(capped_pt * scale)
 
@@ -384,43 +494,40 @@ class PPTEngine:
                         y += font_size_px + 4
                         continue
 
-                    # Try to load a suitable font
-                    try:
-                        if is_bold:
-                            pil_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size_px)
-                        else:
-                            pil_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size_px)
-                    except Exception:
-                        try:
-                            pil_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size_px)
-                        except Exception:
-                            pil_font = ImageFont.load_default()
+                    pil_font = PPTEngine._load_preview_font(ImageFont, is_bold, font_size_px)
 
                     # Word-wrap text to fit within shape width
-                    wrapped_lines = PPTEngine._word_wrap(draw, line_text.strip(), pil_font, w - 8)
+                    wrapped_lines = PPTEngine._word_wrap(draw, line_text.strip(), pil_font, max(8, w - text_margin_x * 2))
+                    rendered_lines.extend((wl, pil_font, font_color, para.alignment) for wl in wrapped_lines)
 
-                    for wl in wrapped_lines:
-                        # Determine x based on paragraph alignment
-                        text_x = x + 4
-                        try:
-                            bbox = draw.textbbox((0, 0), wl, font=pil_font)
-                            text_w = bbox[2] - bbox[0]
-                            if para.alignment == PP_ALIGN.CENTER:
-                                text_x = x + (w - text_w) // 2
-                            elif para.alignment == PP_ALIGN.RIGHT:
-                                text_x = x + w - text_w - 4
-                        except Exception:
-                            pass
+                line_height = max(1, max((font.getbbox("Ag")[3] - font.getbbox("Ag")[1] for _, font, _, _ in rendered_lines), default=font_size_px) + 4)
+                if getattr(tf, "vertical_anchor", None) == MSO_ANCHOR.MIDDLE:
+                    text_y = y + max(text_margin_y, (h - line_height * len(rendered_lines)) // 2)
+                elif getattr(tf, "vertical_anchor", None) == MSO_ANCHOR.BOTTOM:
+                    text_y = y + max(text_margin_y, h - line_height * len(rendered_lines) - text_margin_y)
 
-                        if y < slide_h_px:
-                            draw.text((text_x, y), wl, fill=font_color, font=pil_font)
-                        y += font_size_px + 4
+                for wl, pil_font, font_color, alignment in rendered_lines:
+                    # Determine x based on paragraph alignment
+                    text_x = x + text_margin_x
+                    try:
+                        bbox = draw.textbbox((0, 0), wl, font=pil_font)
+                        text_w = bbox[2] - bbox[0]
+                        if alignment == PP_ALIGN.CENTER:
+                            text_x = x + (w - text_w) // 2
+                        elif alignment == PP_ALIGN.RIGHT:
+                            text_x = x + w - text_w - 4
+                    except Exception:
+                        pass
+
+                    if text_y < slide_h_px:
+                        draw.text((text_x, text_y), wl, fill=font_color, font=pil_font)
+                    text_y += line_height
 
             # Convert to base64 PNG
             buf = io.BytesIO()
             img.save(buf, format='PNG', quality=92)
             buf.seek(0)
-            b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+            b64 = base64.b64encode(buf.getvalue()).decode("ascii")
             slide_images.append(b64)
 
         return slide_images
@@ -449,6 +556,95 @@ class PPTEngine:
         return lines if lines else [text]
 
     @staticmethod
+    def _compact_text(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+    @staticmethod
+    def _clean_generated_text(value: str) -> str:
+        value = re.sub(r"[`*_]", "", str(value or ""))
+        value = re.sub(r"\s+", " ", value).strip(" :-")
+        return value
+
+    @staticmethod
+    def _shape_font_size(shape) -> float:
+        sizes = []
+        try:
+            for paragraph in shape.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    if run.font.size:
+                        sizes.append(run.font.size.pt)
+        except Exception:
+            pass
+        return max(sizes, default=12.0)
+
+    @staticmethod
+    def _is_placeholder_text(text: str) -> bool:
+        compact = PPTEngine._compact_text(text)
+        return any(token in compact for token in ("loremipsum", "placeholder", "replacewith", "sampletext"))
+
+    @staticmethod
+    def _extract_pitch_outline(pitch_sections: Dict[str, Any]) -> list:
+        """Extract the optional slide-by-slide part of the streamed pitch."""
+        raw = str((pitch_sections or {}).get("full_raw") or "")
+        if not raw:
+            return []
+        outline_match = re.search(r"##\s*Pitch Outline(.*?)(?=##\s*Final Pitch Showcase|\Z)", raw, re.I | re.S)
+        outline_text = outline_match.group(1) if outline_match else raw
+        records = []
+        current = None
+        slide_re = re.compile(
+            r"^\s*(?:#{1,6}\s*)?(?:\*\*)?slide\s*(\d+)\s*[:.)\-–—]\s*(.+?)(?:\*\*)?\s*$",
+            re.I,
+        )
+        for raw_line in outline_text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            match = slide_re.match(line)
+            if match:
+                if current:
+                    records.append(current)
+                current = {
+                    "number": int(match.group(1)),
+                    "title": PPTEngine._clean_generated_text(match.group(2)),
+                    "bullets": [],
+                    "paragraphs": [],
+                }
+                continue
+            if current is None:
+                continue
+            is_bullet = line.startswith(("- ", "* ", "• "))
+            cleaned = PPTEngine._clean_generated_text(line[2:] if is_bullet else line)
+            if not cleaned:
+                continue
+            (current["bullets"] if is_bullet else current["paragraphs"]).append(cleaned)
+        if current:
+            records.append(current)
+        for record in records:
+            if not record["bullets"] and record["paragraphs"]:
+                record["bullets"] = record["paragraphs"][:4]
+            record["bullets"] = [item[:180] for item in record["bullets"][:5]]
+        return records
+
+    @staticmethod
+    def _slide_role(text: str, index: int) -> str:
+        compact = PPTEngine._compact_text(text)
+        role_keywords = [
+            ("conclusion", ("thankyou", "conclusion", "nextsteps")),
+            ("problem", ("problem", "challenge", "painpoint")),
+            ("solution", ("solution", "productoverview", "serviceoverview", "uniquevalueproposition")),
+            ("market", ("market", "targetaudience", "statistics", "financial", "traction")),
+            ("roadmap", ("roadmap", "timeline", "objectives", "milestone")),
+            ("team", ("ourteam", "theteam", "superteam", "team", "manager", "staff")),
+            ("architecture", ("architecture", "technology", "techstack", "businessmodel")),
+            ("intro", ("introduction", "aboutourcompany", "projectoverview", "pitchdeck", "startuppitch")),
+        ]
+        for role, keywords in role_keywords:
+            if any(keyword in compact for keyword in keywords):
+                return role
+        return "intro" if index == 0 else "general"
+
+    @staticmethod
     def fill_presentation(
         template_source: str,
         session_name: str,
@@ -460,10 +656,13 @@ class PPTEngine:
         team_data: Dict[str, Any] = None,
         custom_pptx_bytes: bytes = None
     ) -> bytes:
-        """
-        In-Place Template Replacement Engine:
-        Preserves 100% of designer master graphics, backgrounds, vector shapes, cards, and fonts
-        from Template-1.pptx through Template-5.pptx (or user uploaded custom PPTX).
+        """Populate a selected deck while preserving its authored layout and artwork.
+
+        A template is not a fixed ten-slide wireframe: the bundled decks have
+        different slide counts and different content roles.  This method therefore
+        detects each slide's role from its existing title, replaces only title and
+        placeholder copy, and leaves all graphics, pictures, card geometry, and
+        footer branding in place.
         """
         if custom_pptx_bytes:
             prs = Presentation(io.BytesIO(custom_pptx_bytes))
@@ -475,193 +674,117 @@ class PPTEngine:
             prs = Presentation(t_path)
 
         team_info = team_data or {}
-        user_name = team_info.get('name', 'Innovator')
-        user_role = team_info.get('role', 'Fullstack Engineer')
-        skills = team_info.get('skills', ['Python', 'React'])
-        skills_str = ', '.join(skills) if isinstance(skills, list) else str(skills)
+        members = team_info.get("members") if isinstance(team_info.get("members"), list) else []
+        first_member = members[0] if members else team_info
+        user_name = first_member.get("name") or first_member.get("full_name") or "Innovator"
+        user_role = first_member.get("role") or first_member.get("primary_role") or "Fullstack Engineer"
+        skills = first_member.get("skills") or first_member.get("tech_stack") or ["Python", "React"]
+        skills_str = ", ".join(map(str, skills)) if isinstance(skills, list) else str(skills)
 
-        ms_bullets = [f"{m.get('title', 'Milestone')}: {m.get('status', 'In Progress')}" for m in (milestones or [])]
-        task_bullets = [f"{t.get('name', 'Task')} [{t.get('priority', 'High')}]" for t in (tasks[:6] if tasks else [])]
+        milestone_bullets = [
+            f"{m.get('phase', 'Milestone')}: {m.get('title') or m.get('deliverable') or 'In progress'}"
+            for m in (milestones or [])
+        ]
+        task_bullets = [f"{t.get('name', 'Task')} · {(t.get('status') or 'pending').replace('_', ' ')}" for t in (tasks or [])[:5]]
+        outline = PPTEngine._extract_pitch_outline(pitch_sections or {})
+        demo = pitch_sections.get("demo") or "A focused, end-to-end product journey from the user's problem to measurable value."
+        showcase = pitch_sections.get("showcase") or "A practical product that turns a real execution problem into a clear, demonstrable outcome."
 
-        slide_contents = [
-            {
-                "topic": "ai",
-                "title": session_name or "Project Pitch",
-                "subtitle": user_idea or "AI Hackathon Execution Platform",
-                "bullets": ["AI-Driven Co-Founder Engine", "Real-Time Task Syncing", "Zero-Overflow Slide Generation"]
-            },
-            {
-                "topic": "problem",
-                "title": "Problem Statement & Vision",
-                "subtitle": problem_statement or "Addressing hackathon project planning and execution challenges.",
-                "bullets": ["Loss of project momentum during hackathons", "Unstructured milestone management", "Manual pitch slide design overhead"]
-            },
-            {
-                "topic": "solution",
-                "title": "Core Solution & Product Demo",
-                "subtitle": pitch_sections.get("demo", "Real-time AI workflow engine for execution teams."),
-                "bullets": ["Interactive AI Coach Room", "Task Board with AI Blocker Assistance", "Instant PPTX & PDF Presentation Suite"]
-            },
-            {
-                "topic": "architecture",
-                "title": "System Architecture & Stack",
-                "subtitle": pitch_sections.get("architecture", "FastAPI backend, Supabase DB, React 19 UI."),
-                "bullets": ["FastAPI Async Backend", "Supabase Database & Auth", "Claude LLM Broker & Agents"]
-            },
-            {
-                "topic": "roadmap",
-                "title": "Roadmap & Execution Plan",
-                "subtitle": "Sprint Milestones",
-                "bullets": ms_bullets if ms_bullets else ["Phase 1: Architecture & DB Setup", "Phase 2: AI Coach & Task Sync", "Phase 3: Presentation Studio Export"]
-            },
-            {
-                "topic": "metrics",
-                "title": "Sprint Tasks & Progress",
-                "subtitle": "Execution Metrics",
-                "bullets": task_bullets if task_bullets else ["Task 1: Supabase Setup", "Task 2: AI Scope Review", "Task 3: Slide Export Engine"]
-            },
-            {
-                "topic": "team",
-                "title": "Team & Technical Mastery",
-                "subtitle": f"Lead: {user_name} ({user_role})",
-                "bullets": [f"Lead: {user_name}", f"Role: {user_role}", f"Skills: {skills_str}"]
-            },
-            {
-                "topic": "showcase",
-                "title": "Pitch Showcase & Impact",
-                "subtitle": pitch_sections.get("showcase", "KAIROS provides an end-to-end execution co-founder."),
-                "bullets": ["Reduces pitch compilation time by 90%", "Guarantees zero text overflow across all templates", "Professional PPTX and PDF output streams"]
-            },
-            {
-                "topic": "tech",
-                "title": "Risk Mitigation & Support",
-                "subtitle": "Resilience Strategy",
-                "bullets": ["LLM rate-limit fallback routing", "Resilient database connection pools", "Validated slide placeholder mapping"]
-            },
-            {
-                "topic": "ai",
-                "title": "Conclusion & Next Steps",
-                "subtitle": "Ready for Live Execution",
-                "bullets": ["Launch local servers", "Test live presentation decks", "Submit project to judges"]
+        content_by_role = {
+            "intro": {"title": session_name or "Project Pitch", "summary": user_idea or "A focused product built to solve a real user problem.", "bullets": ["Clear user problem", "Focused product experience", "Measurable execution"]},
+            "problem": {"title": "The Problem", "summary": problem_statement or "Teams lose momentum when planning, execution, and communication are disconnected.", "bullets": ["Fragmented planning and execution", "Slow feedback loops", "Too much manual coordination"]},
+            "solution": {"title": "The Solution", "summary": demo, "bullets": ["Guided product workflow", "Real-time progress visibility", "Actionable AI assistance"]},
+            "architecture": {"title": "How It Works", "summary": pitch_sections.get("architecture") or "A lightweight web application connects the product experience, data layer, and AI workflow.", "bullets": ["FastAPI service layer", "React product experience", "Persistent project data and AI orchestration"]},
+            "roadmap": {"title": "Roadmap & Execution", "summary": "The build is organized into small, demonstrable milestones.", "bullets": milestone_bullets or ["Validate the core workflow", "Ship the product experience", "Measure and iterate"]},
+            "market": {"title": "Audience & Impact", "summary": "The product is designed around the people who need a faster, clearer path from idea to outcome.", "bullets": ["Primary users with an urgent workflow", "A repeatable product moment", "Clear path to measurable impact"]},
+            "team": {"title": "The Team", "summary": f"{user_name} leads the build as {user_role}.", "bullets": [f"Lead: {user_name}", f"Role: {user_role}", f"Skills: {skills_str}"]},
+            "conclusion": {"title": "Next Steps", "summary": showcase, "bullets": ["Demo the core workflow", "Show the measured outcome", "Invite the next step"]},
+            "general": {"title": "Project Overview", "summary": showcase, "bullets": task_bullets or ["Product capability", "Technical foundation", "Execution outcome"]},
+        }
+
+        def choose_content(role, slide_index):
+            content = dict(content_by_role.get(role, content_by_role["general"]))
+            matching = None
+            role_tokens = {
+                "problem": ("problem",),
+                "solution": ("solution",),
+                "market": ("market", "traction", "statistics", "financial"),
+                "roadmap": ("roadmap", "timeline", "objective"),
+                "team": ("team",),
+                "architecture": ("architecture", "technology", "businessmodel"),
+                "conclusion": ("conclusion", "thankyou"),
+                "intro": ("intro", "overview", "pitch"),
             }
-        ]
+            for item in outline:
+                item_text = PPTEngine._compact_text(item.get("title"))
+                if role != "general" and any(token in item_text for token in role_tokens.get(role, (role,))):
+                    matching = item
+                    break
+            if matching is None and slide_index < len(outline):
+                matching = outline[slide_index]
+            if matching:
+                content["title"] = matching.get("title") or content["title"]
+                content["bullets"] = matching.get("bullets") or content["bullets"]
+                if matching.get("paragraphs"):
+                    content["summary"] = matching["paragraphs"][0]
+            return content
 
-        EXCLUDE_PATTERNS = [
-            'ingoude company', 'fradel and spies', 'thynk unlimited',
-            'hello@', 'www.', '+123', '25 august', '27 - 12', 'december',
-            '123 anywhere', '(001)', '(002)', '(003)', 'manager', 'staf',
-            'presented to', 'website :'
-        ]
-        
-        TITLE_KEYWORDS = [
-            'pitch deck', 'the problem', 'the solution', 'company roadmap',
-            'service overview', 'target market', 'financial projections',
-            'current investor', 'our team', 'thank you', 'intro-duction',
-            'problem statement', 'our solution', 'market research',
-            'product overview', 'unique value proposition', 'business model',
-            'traction our progress', 'pitch deck presentation', 'thank you so much!'
-        ]
+        footer_tokens = ("ingoudecompany", "fradelandspies", "thynkunlimited", "hello", "www", "123anywhere", "august", "december", "website")
+        title_tokens = ("pitchdeck", "problem", "solution", "roadmap", "introduction", "overview", "market", "team", "thankyou", "conclusion", "objectives", "timeline", "traction", "businessmodel", "architecture", "statistics", "product")
 
-        for slide_idx, slide in enumerate(prs.slides):
-            c_data = slide_contents[slide_idx] if slide_idx < len(slide_contents) else {
-                "topic": "tech",
-                "title": f"Project Insight {slide_idx + 1}",
-                "subtitle": pitch_sections.get("slides", "Comprehensive pitch execution overview."),
-                "bullets": ["Key technical metric 1", "Key technical metric 2", "Key technical metric 3"]
-            }
+        for slide_index, slide in enumerate(prs.slides):
+            text_shapes = [shape for shape in slide.shapes if shape.has_text_frame and shape.text_frame.text.strip()]
+            if not text_shapes:
+                continue
 
-            text_shapes = [s for s in slide.shapes if s.has_text_frame]
+            slide_text = " ".join(shape.text_frame.text for shape in text_shapes)
+            role = PPTEngine._slide_role(slide_text, slide_index)
+            content = choose_content(role, slide_index)
 
-            title_shape = None
-            subtitle_shape = None
-            body_shapes = []
+            # Determine the authored title from the template, not from a fixed
+            # slide number.  This works across all five bundled decks and most
+            # user-uploaded decks that use ordinary title text boxes.
+            title_candidates = [
+                shape for shape in text_shapes
+                if any(token in PPTEngine._compact_text(shape.text_frame.text) for token in title_tokens)
+                and not any(token in PPTEngine._compact_text(shape.text_frame.text) for token in footer_tokens)
+            ]
+            title_shape = max(title_candidates, key=PPTEngine._shape_font_size) if title_candidates else None
+            if title_shape is None and slide_index == 0:
+                title_shape = max(text_shapes, key=PPTEngine._shape_font_size)
+            placeholder_shapes = [candidate for candidate in text_shapes if PPTEngine._is_placeholder_text(candidate.text_frame.text)]
 
             for shape in text_shapes:
-                txt = shape.text_frame.text.strip()
-                txt_lower = txt.lower()
-
-                # Protect presenter branding name
-                if 'presented by' in txt_lower:
-                    PPTEngine.fit_text_to_frame(shape.text_frame, f"Presented By : {user_name}", max_font_size=12, min_font_size=8, is_title=False)
+                original = shape.text_frame.text.strip()
+                compact = PPTEngine._compact_text(original)
+                if "presentedby" in compact:
+                    PPTEngine.fit_text_to_frame(shape.text_frame, f"Presented By : {user_name}", max_font_size=12, min_font_size=8)
+                    continue
+                if shape is title_shape:
+                    PPTEngine.fit_text_to_frame(shape.text_frame, content["title"], max_font_size=32, min_font_size=14, is_title=True)
+                    continue
+                if any(token in compact for token in footer_tokens) or compact in {"001", "002", "003", "1", "2", "3"}:
+                    continue
+                if any(token in compact for token in ("manager", "staf", "projectmanager")) and role == "team":
+                    PPTEngine.fit_text_to_frame(shape.text_frame, user_role, max_font_size=12, min_font_size=8)
+                    continue
+                if not PPTEngine._is_placeholder_text(original):
                     continue
 
-                # Protect all other header/footer branding elements
-                if any(ep in txt_lower for ep in EXCLUDE_PATTERNS):
-                    continue
-
-                top_pos = shape.top.inches if hasattr(shape, 'top') else 0
-
-                # Match Slide Title
-                if any(tk in txt_lower for tk in TITLE_KEYWORDS) or (top_pos >= 2.5 and top_pos <= 4.5 and len(txt) < 35):
-                    if not title_shape:
-                        title_shape = shape
-                    elif not subtitle_shape:
-                        subtitle_shape = shape
-                    else:
-                        body_shapes.append(shape)
-                elif 'presentation' in txt_lower or 'pitch deck' in txt_lower or (top_pos > 4.5 and top_pos < 6.0 and len(txt) < 30):
-                    if not subtitle_shape:
-                        subtitle_shape = shape
-                    else:
-                        body_shapes.append(shape)
+                # Keep every authored card in its original location.  Feed the
+                # summary to the first large placeholder and one short bullet to
+                # each remaining card, which avoids overflowing a card with a
+                # whole paragraph of LLM output.
+                placeholder_index = placeholder_shapes.index(shape)
+                if len(placeholder_shapes) == 1:
+                    replacement = "\n".join([content["summary"]] + [f"• {bullet}" for bullet in content["bullets"][:3]])
+                elif placeholder_index == 0:
+                    replacement = content["summary"]
                 else:
-                    body_shapes.append(shape)
-
-            # 1. Update Title Shape cleanly
-            if title_shape:
-                PPTEngine.fit_text_to_frame(title_shape.text_frame, c_data["title"], max_font_size=24, min_font_size=14, is_title=True)
-
-            # 2. Update Subtitle Shape cleanly
-            if subtitle_shape:
-                PPTEngine.fit_text_to_frame(subtitle_shape.text_frame, c_data["subtitle"], max_font_size=14, min_font_size=10, is_title=False)
-
-            # 3. Distribute Bullets across Body / Card shapes
-            if body_shapes:
-                bullets = c_data["bullets"]
-                if len(body_shapes) == 1:
-                    body_text = c_data["subtitle"] + "\n\n" + "\n".join([f"• {b}" for b in bullets])
-                    PPTEngine.fit_text_to_frame(body_shapes[0].text_frame, body_text, max_font_size=13, min_font_size=9, is_title=False)
-                else:
-                    for idx, b_shape in enumerate(body_shapes):
-                        if idx < len(bullets):
-                            card_text = bullets[idx]
-                        else:
-                            card_text = c_data["subtitle"]
-                        PPTEngine.fit_text_to_frame(b_shape.text_frame, card_text, max_font_size=12, min_font_size=8, is_title=False)
-
-            # 4. Embed Free Subject-Relevant Topic Image & Create Split-Screen Layout (Full Right Half Image)
-            topic_key = c_data.get("topic", "tech")
-            img_bytes = PPTEngine._fetch_topic_image_bytes(topic_key)
-            if img_bytes:
-                try:
-                    img_stream = io.BytesIO(img_bytes)
-                    slide_w = prs.slide_width
-                    slide_h = prs.slide_height
-
-                    # 1. Restrict all text shapes to the left half of the slide
-                    for shape in slide.shapes:
-                        if shape.has_text_frame:
-                            txt = shape.text_frame.text.strip().lower()
-                            if not any(ep in txt for ep in EXCLUDE_PATTERNS) and 'presented by' not in txt:
-                                shape.left = Inches(0.8)
-                                shape.width = Inches(slide_w.inches * 0.45)
-
-                    # 2. Check if slide has picture shapes to replace first
-                    pic_replaced = False
-                    for shape in list(slide.shapes):
-                        if shape.shape_type == pptx.enum.shapes.MSO_SHAPE_TYPE.PICTURE:
-                            sp = shape._element
-                            sp.getparent().remove(sp)
-                            pic_replaced = True
-                    
-                    # 3. Add large high-impact image covering the full right side of slide
-                    img_left = Inches(slide_w.inches * 0.52)
-                    img_top = Inches(0.8)
-                    img_w = Inches(slide_w.inches * 0.43)
-                    img_h = Inches(slide_h.inches - 1.4)
-                    slide.shapes.add_picture(img_stream, img_left, img_top, img_w, img_h)
-                except Exception as e:
-                    logger.warning(f"Error inserting topic image into slide {slide_idx + 1}: {e}")
+                    bullets = content["bullets"] or [content["summary"]]
+                    bullet_index = placeholder_index - 1
+                    replacement = bullets[bullet_index] if bullet_index < len(bullets) else ""
+                PPTEngine.fit_text_to_frame(shape.text_frame, replacement, max_font_size=18, min_font_size=8)
 
         output_stream = io.BytesIO()
         prs.save(output_stream)
