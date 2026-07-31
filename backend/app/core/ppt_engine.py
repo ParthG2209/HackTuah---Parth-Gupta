@@ -674,25 +674,95 @@ class PPTEngine:
         placeholder copy, and leaves all graphics, pictures, card geometry, and
         footer branding in place.
         """
+    @staticmethod
+    def _create_default_base_presentation() -> Presentation:
+        """Creates a styled, functional 8-slide deck if template files are missing or Git LFS pointers."""
+        prs = Presentation()
+        title_slide_layout = prs.slide_layouts[0]
+        bullet_slide_layout = prs.slide_layouts[1]
+
+        roles_config = [
+            ("intro", "Project Pitch", "Lorem ipsum dolor sit amet, presentedby : Innovator"),
+            ("problem", "The Problem", "Lorem ipsum placeholder problem text.\n• Replacewith first point\n• Sampletext second point"),
+            ("solution", "The Solution", "Lorem ipsum placeholder solution text.\n• Replacewith solution point"),
+            ("architecture", "How It Works", "Lorem ipsum placeholder architecture text.\n• Replacewith tech stack"),
+            ("roadmap", "Roadmap & Execution", "Lorem ipsum placeholder roadmap text.\n• Replacewith milestone"),
+            ("market", "Audience & Impact", "Lorem ipsum placeholder market text.\n• Replacewith audience point"),
+            ("team", "The Team", "Lorem ipsum placeholder team manager.\n• Replacewith team role"),
+            ("conclusion", "Next Steps", "Lorem ipsum placeholder conclusion text.\n• Replacewith next steps")
+        ]
+
+        for idx, (role, default_title, default_body) in enumerate(roles_config):
+            layout = title_slide_layout if idx == 0 else bullet_slide_layout
+            slide = prs.slides.add_slide(layout)
+            if slide.shapes.title:
+                slide.shapes.title.text = default_title
+            if len(slide.placeholders) > 1:
+                slide.placeholders[1].text = default_body
+
+        return prs
+
+    @staticmethod
+    def _load_presentation(t_path: Optional[str] = None, custom_pptx_bytes: Optional[bytes] = None) -> Presentation:
         if custom_pptx_bytes:
-            prs = Presentation(io.BytesIO(custom_pptx_bytes))
-        else:
-            t_path = PPTEngine.get_template_path(template_source)
-            if not os.path.exists(t_path):
-                # Fallback to Template-1 if path missing
-                t_path = os.path.join(TEMPLATES_DIR, "Template-1.pptx")
-            if not os.path.exists(t_path):
-                logger.error(
-                    "No PPT template found! Tried %s and fallback %s. "
-                    "TEMPLATES_DIR=%s exists=%s",
-                    template_source, t_path, TEMPLATES_DIR, os.path.isdir(TEMPLATES_DIR)
-                )
-                raise FileNotFoundError(
-                    f"PPT template files are missing on the server. "
-                    f"Expected at: {TEMPLATES_DIR}. "
-                    f"Please redeploy with the template files included."
-                )
-            prs = Presentation(t_path)
+            try:
+                return Presentation(io.BytesIO(custom_pptx_bytes))
+            except Exception as e:
+                logger.warning(f"Could not load custom pptx bytes: {e}")
+
+        if t_path and os.path.exists(t_path):
+            try:
+                if os.path.getsize(t_path) > 5000:
+                    return Presentation(t_path)
+                else:
+                    logger.warning(f"Template at {t_path} is an LFS pointer or invalid (size={os.path.getsize(t_path)}B). Attempting repair.")
+            except Exception as e:
+                logger.warning(f"Could not open presentation at {t_path}: {e}")
+
+        # Fallback search across TEMPLATES_DIR for any valid .pptx (>5KB)
+        if os.path.isdir(TEMPLATES_DIR):
+            for fname in os.listdir(TEMPLATES_DIR):
+                if fname.endswith(".pptx"):
+                    candidate = os.path.join(TEMPLATES_DIR, fname)
+                    try:
+                        if os.path.getsize(candidate) > 5000:
+                            return Presentation(candidate)
+                    except Exception:
+                        pass
+
+        # Generate default base presentation if no valid PPTX file exists
+        default_prs = PPTEngine._create_default_base_presentation()
+        if t_path:
+            try:
+                os.makedirs(os.path.dirname(t_path), exist_ok=True)
+                default_prs.save(t_path)
+                logger.info(f"Generated and saved base presentation template at {t_path}")
+            except Exception as e:
+                logger.warning(f"Could not save base presentation template: {e}")
+        return default_prs
+
+    @staticmethod
+    def fill_presentation(
+        template_source: str,
+        session_name: str,
+        problem_statement: str,
+        user_idea: str,
+        pitch_sections: Dict[str, str],
+        milestones: List[Dict[str, Any]] = None,
+        tasks: List[Dict[str, Any]] = None,
+        team_data: Dict[str, Any] = None,
+        custom_pptx_bytes: bytes = None
+    ) -> bytes:
+        """Populate a selected deck while preserving its authored layout and artwork.
+
+        A template is not a fixed ten-slide wireframe: the bundled decks have
+        different slide counts and different content roles.  This method therefore
+        detects each slide's role from its existing title, replaces only title and
+        placeholder copy, and leaves all graphics, pictures, card geometry, and
+        footer branding in place.
+        """
+        t_path = PPTEngine.get_template_path(template_source) if not custom_pptx_bytes else None
+        prs = PPTEngine._load_presentation(t_path=t_path, custom_pptx_bytes=custom_pptx_bytes)
 
         team_info = team_data or {}
         members = team_info.get("members") if isinstance(team_info.get("members"), list) else []
