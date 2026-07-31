@@ -112,11 +112,11 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
     try {
       const saved = localStorage.getItem('kairos_widget_chat_history');
       return saved ? JSON.parse(saved) : [
-        { role: 'assistant', content: '👋 Hi! I am Kairos 3D Robot Assistant. Ask me anything, or speak commands like *"Mark setup task as completed"* or *"Summarize blockers"*!' }
+        { role: 'assistant', content: 'Hi! I am KAIROS Chatbot. Ask me anything, or speak commands like *"Mark setup task as completed"* or *"Summarize blockers"*.' }
       ];
     } catch (e) {
       return [
-        { role: 'assistant', content: '👋 Hi! I am Kairos 3D Robot Assistant. Ask me anything, or speak commands like *"Mark setup task as completed"* or *"Summarize blockers"*!' }
+        { role: 'assistant', content: 'Hi! I am KAIROS Chatbot. Ask me anything, or speak commands like *"Mark setup task as completed"* or *"Summarize blockers"*.' }
       ];
     }
   });
@@ -387,13 +387,13 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
         setTimeout(() => {
           setMessages(prev => [...prev, { 
             role: 'assistant', 
-            content: "⚠️ **No Active Session Found**: Please create or open a coaching session first so I can analyze your specific project tasks and blockers!" 
+            content: "**No Active Session Found**: Please create or open a coaching session first so I can analyze your specific project tasks and blockers." 
           }]);
         }, 400);
       }
     } catch (err) {
       console.error('Widget voice chat error:', err);
-      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Could not process request. Please check backend connection.' }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Could not process request. Please check backend connection.' }]);
     } finally {
       setIsLoading(false);
     }
@@ -440,13 +440,13 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
       {/* Popover Assistant Window */}
       {isOpen && (
         <div style={{
-          width: '360px',
-          height: '480px',
-          background: 'rgba(15, 13, 24, 0.95)',
+          width: '380px',
+          height: '520px',
+          background: 'rgba(15, 13, 24, 0.97)',
           backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(168, 85, 247, 0.3)',
-          borderRadius: '20px',
-          boxShadow: '0 24px 48px rgba(0, 0, 0, 0.8), 0 0 20px rgba(168, 85, 247, 0.2)',
+          border: '1px solid rgba(168, 85, 247, 0.4)',
+          borderRadius: '0px',
+          boxShadow: '0 24px 48px rgba(0, 0, 0, 0.8), 0 0 20px rgba(168, 85, 247, 0.25)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -464,7 +464,7 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Robot3DAvatar size={36} isListening={isListening} isSpeaking={isLoading} />
               <div>
-                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#fff' }}>Kairos 3D Robot AI</h4>
+                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#fff', letterSpacing: '0.05em' }}>KAIROS Chatbot</h4>
                 <span style={{ fontSize: '10px', color: '#00FF66', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#00FF66', display: 'inline-block' }} /> Voice & Chat Active
                 </span>
@@ -496,7 +496,7 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
                   background: m.role === 'user' ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(99, 102, 241, 0.3))' : 'rgba(255, 255, 255, 0.05)',
                   border: m.role === 'user' ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)',
                   padding: '10px 14px',
-                  borderRadius: '14px',
+                  borderRadius: '0px',
                   fontSize: '12px',
                   lineHeight: '1.4',
                   color: '#fff'
@@ -512,7 +512,7 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
                 padding: '8px 16px',
                 background: 'rgba(239, 68, 68, 0.15)',
                 border: '1px solid rgba(239, 68, 68, 0.3)',
-                borderRadius: '20px',
+                borderRadius: '0px',
                 color: '#f87171',
                 fontSize: '11px',
                 display: 'flex',
@@ -554,7 +554,7 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
                 whiteSpace: 'nowrap'
               }}
             >
-              ⚡ Blockers summary
+              Blockers Summary
             </button>
             <button
               onClick={() => handleSend("Mark task as completed")}
@@ -569,7 +569,7 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
                 whiteSpace: 'nowrap'
               }}
             >
-              ✅ Mark task done
+              Mark Task Done
             </button>
             <button
               onClick={() => handleSend("What should I work on next?")}
@@ -584,7 +584,7 @@ export default function VoiceAssistantWidget({ sessionId = null, onCommand = nul
                 whiteSpace: 'nowrap'
               }}
             >
-              🎯 Next priority
+              Next Priority
             </button>
           </div>
 

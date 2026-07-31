@@ -326,7 +326,7 @@ export default function Coach() {
 
       if (!response.ok) {
         const errText = await response.text();
-        setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ Backend error (${response.status}): ${errText || 'Failed to connect to Coach API.'}` }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: `Backend error (${response.status}): ${errText || 'Failed to connect to Coach API.'}` }]);
         setIsGenerating(false);
         return;
       }
@@ -361,7 +361,7 @@ export default function Coach() {
                   return updated;
                 });
               } else if (payload.type === 'error') {
-                botResponse += `\n⚠️ ${payload.content}`;
+                botResponse += `\n[ERROR] ${payload.content}`;
                 setMessages(prev => {
                   const updated = [...prev];
                   updated[updated.length - 1] = { role: 'assistant', content: botResponse };
@@ -376,7 +376,7 @@ export default function Coach() {
 
     } catch (err) {
       console.error("Chat error:", err);
-      setMessages(prev => [...prev, { role: 'assistant', content: "⚠️ Network error. Please check your internet or backend status." }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Network error. Please check your internet or backend status." }]);
       setIsGenerating(false);
     }
   };
@@ -600,7 +600,7 @@ export default function Coach() {
             {roadmap.length > 0 && (
               <div style={{ display: 'flex', gap: '12px' }}>
                 <button onClick={handleDownloadProjectPDF} className="btn btn-primary" style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)' }}>
-                  <Download size={14} /> 📄 Export Project PDF
+                  <Download size={14} /> Export Project PDF
                 </button>
                 <button onClick={() => handleDownloadRoadmap('md')} className="btn btn-secondary">
                   <Download size={14} /> Export MD

@@ -307,7 +307,7 @@ export default function Tasks() {
                               style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '0px' }}
                               disabled={loadingFixId === b.id}
                             >
-                              {loadingFixId === b.id ? 'Thinking...' : '💡 Ask KAIROS for Fix'}
+                              {loadingFixId === b.id ? 'Thinking...' : 'Ask KAIROS for Fix'}
                             </button>
                           </div>
                         </div>

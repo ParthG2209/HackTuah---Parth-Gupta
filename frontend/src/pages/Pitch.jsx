@@ -288,7 +288,7 @@ export default function Pitch() {
             </div>
             <div style={{ display: 'flex', gap: '12px' }}>
               <button onClick={handleDownloadProjectPDF} className="btn btn-primary" style={{ padding: '10px 16px', background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)', border: 'none' }}>
-                <Download size={16} /> 📄 Export Full PDF Report
+                <Download size={16} /> Export Full PDF Report
               </button>
               <button onClick={handleExportSubmission} className="btn btn-primary" style={{ padding: '10px 16px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', border: 'none' }}>
                 <Download size={16} /> Export Submission Package
